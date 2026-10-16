@@ -11,8 +11,7 @@ import java.time.LocalDate;
 
 public class ActivityLogRequest {
 
-    @NotNull
-    @Positive
+
     private Long userId;
 
     @NotNull
