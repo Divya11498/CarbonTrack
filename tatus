@@ -1,0 +1,159 @@
+warning: in the working copy of 'src/main/resources/db/migration/V1__create_schema.sql', LF will be replaced by CRLF the next time Git touches it
+warning: in the working copy of 'src/main/resources/db/schema/carbontrack-schema.sql', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/database-tests/02_carbontrack_read_only_audit.sql b/database-tests/02_carbontrack_read_only_audit.sql[m
+[1mdeleted file mode 100644[m
+[1mindex 6430e14..0000000[m
+[1m--- a/database-tests/02_carbontrack_read_only_audit.sql[m
+[1m+++ /dev/null[m
+[36m@@ -1,153 +0,0 @@[m
+[31m--- 1. Tables currently present in public.[m
+[31m-SELECT table_name[m
+[31m-FROM information_schema.tables[m
+[31m-WHERE table_schema = 'public' AND table_type = 'BASE TABLE'[m
+[31m-ORDER BY table_name;[m
+[31m-[m
+[31m--- 2. Columns and data types for the eight ERD tables.[m
+[31m-SELECT table_name, ordinal_position, column_name, data_type,[m
+[31m-       character_maximum_length, numeric_precision, numeric_scale,[m
+[31m-       is_nullable, column_default[m
+[31m-FROM information_schema.columns[m
+[31m-WHERE table_schema = 'public'[m
+[31m-  AND table_name IN ([m
+[31m-    'users', 'activity_logs', 'activity_types', 'emission_factors',[m
+[31m-    'user_goals', 'badges', 'user_badges', 'feedback'[m
+[31m-  )[m
+[31m-ORDER BY table_name, ordinal_position;[m
+[31m-[m
+[31m--- 3. Primary keys, foreign keys, and unique constraints for the eight ERD tables.[m
+[31m-SELECT tc.table_name, tc.constraint_name, tc.constraint_type,[m
+[31m-       kcu.column_name,[m
+[31m-       ccu.table_name AS referenced_table,[m
+[31m-       ccu.column_name AS referenced_column[m
+[31m-FROM information_schema.table_constraints tc[m
+[31m-LEFT JOIN information_schema.key_column_usage kcu[m
+[31m-  ON tc.constraint_schema = kcu.constraint_schema[m
+[31m- AND tc.constraint_name = kcu.constraint_name[m
+[31m- AND tc.table_name = kcu.table_name[m
+[31m-LEFT JOIN information_schema.constraint_column_usage ccu[m
+[31m-  ON tc.constraint_schema = ccu.constraint_schema[m
+[31m- AND tc.constraint_name = ccu.constraint_name[m
+[31m-WHERE tc.table_schema = 'public'[m
+[31m-  AND tc.table_name IN ([m
+[31m-    'users', 'activity_logs', 'activity_types', 'emission_factors',[m
+[31m-    'user_goals', 'badges', 'user_badges', 'feedback'[m
+[31m-  )[m
+[31m-  AND tc.constraint_type IN ('PRIMARY KEY', 'FOREIGN KEY', 'UNIQUE')[m
+[31m-ORDER BY tc.table_name, tc.constraint_type, tc.constraint_name;[m
+[31m-[m
+[31m--- 4. Row counts for the eight ERD tables (only tables that exist).[m
+[31m-SELECT 'users' AS table_name, COUNT(*) AS row_count FROM public.users[m
+[31m-UNION ALL SELECT 'activity_logs', COUNT(*) FROM public.activity_logs[m
+[31m-UNION ALL SELECT 'activity_types', COUNT(*) FROM public.activity_types[m
+[31m-UNION ALL SELECT 'emission_factors', COUNT(*) FROM public.emission_factors[m
+[31m-UNION ALL SELECT 'user_goals', COUNT(*) FROM public.user_goals[m
+[31m-UNION ALL SELECT 'badges', COUNT(*) FROM public.badges[m
+[31m-UNION ALL SELECT 'user_badges', COUNT(*) FROM public.user_badges[m
+[31m-UNION ALL SELECT 'feedback', COUNT(*) FROM public.feedback;[m
+[31m-[m
+[31m--- 5. Existing users and IDs. Do not assume an ID value.[m
+[31m-SELECT id, name, email, role, is_active, created_at[m
+[31m-FROM public.users[m
+[31m-ORDER BY created_at;[m
+[31m-[m
+[31m--- 6. Activity types and the units defined for them.[m
+[31m-SELECT id, name, category, unit, is_active[m
+[31m-FROM public.activity_types[m
+[31m-ORDER BY category, name;[m
+[31m-[m
+[31m--- 7. Active emission factors and their source/unit information.[m
+[31m-SELECT ef.id, at.name AS activity_type, at.category,[m
+[31m-       ef.region, ef.value_per_unit, ef.unit, ef.source, ef.is_active[m
+[31m-FROM public.emission_factors ef[m
+[31m-JOIN public.activity_types at ON at.id = ef.activity_type_id[m
+[31m-WHERE ef.is_active = TRUE[m
+[31m-ORDER BY at.category, at.name, ef.region, ef.unit;[m
+[31m-[m
+[31m--- 8. Potential duplicate active factors for same type/region/unit.[m
+[31m-SELECT activity_type_id, COALESCE(region, '') AS region_key, unit,[m
+[31m-       COUNT(*) AS active_factor_count[m
+[31m-FROM public.emission_factors[m
+[31m-WHERE is_active = TRUE[m
+[31m-GROUP BY activity_type_id, COALESCE(region, ''), unit[m
+[31m-HAVING COUNT(*) > 1[m
+[31m-ORDER BY activity_type_id, region_key, unit;[m
+[31m-[m
+[31m--- 9. Activity logs whose activity type has no active factor with the same unit.[m
+[31m--- The ERD has no unit column on activity_logs, so this checks factor availability[m
+[31m--- for each referenced activity type; it cannot compare a per-log unit.[m
+[31m-SELECT al.id AS activity_log_id, al.activity_type_id, at.name AS activity_type[m
+[31m-FROM public.activity_logs al[m
+[31m-JOIN public.activity_types at ON at.id = al.activity_type_id[m
+[31m-WHERE NOT EXISTS ([m
+[31m-    SELECT 1[m
+[31m-    FROM public.emission_factors ef[m
+[31m-    WHERE ef.activity_type_id = al.activity_type_id[m
+[31m-      AND ef.is_active = TRUE[m
+[31m-      AND ef.unit = at.unit[m
+[31m-)[m
+[31m-ORDER BY al.activity_date;[m
+[31m-[m
+[31m--- 10. Stored emissions compared with value * active factor.[m
+[31m--- Returns rows where no active factor exists or no matching factor can be chosen.[m
+[31m--- If several active factors exist for one activity type, inspect them in section 8[m
+[31m--- before interpreting the calculated difference.[m
+[31m-SELECT al.id AS activity_log_id, al.activity_date, at.name AS activity_type,[m
+[31m-       al.value, at.unit, al.calculated_emission,[m
+[31m-       ef.value_per_unit,[m
+[31m-       ROUND((al.value * ef.value_per_unit)::numeric, 2) AS expected_emission[m
+[31m-FROM public.activity_logs al[m
+[31m-JOIN public.activity_types at ON at.id = al.activity_type_id[m
+[31m-LEFT JOIN LATERAL ([m
+[31m-    SELECT value_per_unit[m
+[31m-    FROM public.emission_factors[m
+[31m-    WHERE activity_type_id = al.activity_type_id[m
+[31m-      AND is_active = TRUE[m
+[31m-      AND unit = at.unit[m
+[31m-    ORDER BY created_at DESC[m
+[31m-    LIMIT 1[m
+[31m-) ef ON TRUE[m
+[31m-WHERE ef.value_per_unit IS NULL[m
+[31m-   OR al.calculated_emission IS DISTINCT FROM ROUND((al.value * ef.value_per_unit)::numeric, 2)[m
+[31m-ORDER BY al.activity_date;[m
+[31m-[m
+[31m--- 11. Foreign-key orphan checks for ERD relationships.[m
+[31m-SELECT 'activity_logs.user_id' AS relationship, COUNT(*) AS orphan_count[m
+[31m-FROM public.activity_logs al LEFT JOIN public.users u ON u.id = al.user_id[m
+[31m-WHERE u.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'activity_logs.activity_type_id', COUNT(*)[m
+[31m-FROM public.activity_logs al LEFT JOIN public.activity_types at ON at.id = al.activity_type_id[m
+[31m-WHERE at.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'emission_factors.activity_type_id', COUNT(*)[m
+[31m-FROM public.emission_factors ef LEFT JOIN public.activity_types at ON at.id = ef.activity_type_id[m
+[31m-WHERE at.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'user_goals.user_id', COUNT(*)[m
+[31m-FROM public.user_goals ug LEFT JOIN public.users u ON u.id = ug.user_id[m
+[31m-WHERE u.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'user_badges.user_id', COUNT(*)[m
+[31m-FROM public.user_badges ub LEFT JOIN public.users u ON u.id = ub.user_id[m
+[31m-WHERE u.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'user_badges.badge_id', COUNT(*)[m
+[31m-FROM public.user_badges ub LEFT JOIN public.badges b ON b.id = ub.badge_id[m
+[31m-WHERE b.id IS NULL[m
+[31m-UNION ALL[m
+[31m-SELECT 'feedback.user_id', COUNT(*)[m
+[31m-FROM public.feedback f LEFT JOIN public.users u ON u.id = f.user_id[m
+[31m-WHERE u.id IS NULL;[m
+[31m-[m
+[31m--- 12. Check if the Flyway history table exists before querying it.[m
+[31m-SELECT table_schema, table_name[m
+[31m-FROM information_schema.tables[m
+[31m-WHERE table_name = 'flyway_schema_history'[m
+[31m-ORDER BY table_schema;[m
+[31m-[m
+[31m--- If section 12 shows the history table under public, run separately:[m
+[31m--- SELECT installed_rank, version, description, 
