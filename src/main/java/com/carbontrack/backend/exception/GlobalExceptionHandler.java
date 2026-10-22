@@ -4,8 +4,10 @@ package com.carbontrack.backend.exception;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.bind.MissingServletRequestParameterException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 import java.util.Map;
 
@@ -34,6 +36,30 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.badRequest()
                 .body(Map.of("error", exception.getMessage()));
+    }
+
+    @ExceptionHandler(MissingServletRequestParameterException.class)
+    public ResponseEntity<Map<String, String>> handleMissingParameter(
+            MissingServletRequestParameterException exception) {
+
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "error",
+                        "Missing required parameter: "
+                                + exception.getParameterName()
+                ));
+    }
+
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<Map<String, String>> handleInvalidParameter(
+            MethodArgumentTypeMismatchException exception) {
+
+        return ResponseEntity.badRequest()
+                .body(Map.of(
+                        "error",
+                        "Invalid value for parameter: "
+                                + exception.getName()
+                ));
     }
 
     @ExceptionHandler(Exception.class)
