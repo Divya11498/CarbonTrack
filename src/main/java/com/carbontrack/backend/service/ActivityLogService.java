@@ -1,3 +1,4 @@
+
 package com.carbontrack.backend.service;
 
 import com.carbontrack.backend.entity.ActivityLog;
@@ -8,10 +9,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 @Service
 public class ActivityLogService {
@@ -22,147 +24,126 @@ public class ActivityLogService {
     public ActivityLogService(
             ActivityLogRepository activityLogRepository,
             EmissionCalculationService emissionCalculationService) {
-
         this.activityLogRepository = activityLogRepository;
         this.emissionCalculationService = emissionCalculationService;
     }
 
-    // Create an activity and invalidate cached analytics
-    @CacheEvict(cacheNames = "analytics", allEntries = true)
     @Transactional
+    @CacheEvict(cacheNames = "analytics", allEntries = true)
     public ActivityLog createActivity(ActivityLog activityLog) {
 
         if (activityLog == null) {
             throw new IllegalArgumentException(
-                    "Activity log cannot be null.");
+                    "Activity details are required");
         }
 
-        EmissionCalculationResult result =
+        if (activityLog.getUserId() == null) {
+            throw new IllegalArgumentException(
+                    "User ID is required");
+        }
+
+        if (activityLog.getCategoryId() == null) {
+            throw new IllegalArgumentException(
+                    "Category ID is required");
+        }
+
+        EmissionCalculationResult calculation =
                 emissionCalculationService.calculateEmission(
                         activityLog.getActivityTypeId(),
                         activityLog.getQuantity(),
                         activityLog.getUnit(),
-                        activityLog.getLogDate());
+                        activityLog.getLogDate()
+                );
 
-        activityLog.setCo2eKg(result.co2eKg());
-        activityLog.setEmissionFactorId(result.emissionFactorId());
+        if (calculation == null
+                || calculation.co2eKg() == null
+                || calculation.emissionFactorId() == null) {
+            throw new IllegalStateException(
+                    "Emission calculation did not return a valid result");
+        }
+
+        activityLog.setCo2eKg(calculation.co2eKg());
+        activityLog.setEmissionFactorId(
+                calculation.emissionFactorId());
+
+        if (activityLog.getSource() == null
+                || activityLog.getSource().isBlank()) {
+            activityLog.setSource("MANUAL");
+        }
 
         return activityLogRepository.save(activityLog);
     }
 
-    // Retrieve all activities
-    @Transactional(readOnly = true)
-    public List<ActivityLog> getAllActivities() {
-        return activityLogRepository.findAll();
-    }
-
-    // Retrieve activities belonging to a specific user
     @Transactional(readOnly = true)
     public List<ActivityLog> getActivitiesByUserId(Long userId) {
-
-        validateUserId(userId);
-
         return activityLogRepository.findByUserId(userId);
     }
 
-    // Calculate emissions for a date range
-    @Transactional(readOnly = true)
-    public BigDecimal getEmissionsByDateRange(
-            Long userId,
-            LocalDate startDate,
-            LocalDate endDate) {
-
-        validateUserId(userId);
-
-        if (startDate == null || endDate == null
-                || !startDate.isBefore(endDate)) {
-
-            throw new IllegalArgumentException(
-                    "Start date must be before end date.");
-        }
-
-        return activityLogRepository.sumEmissionsByUserAndDateRange(
-                userId, startDate, endDate);
-    }
-
-    // Daily analytics with Redis caching
     @Cacheable(
             cacheNames = "analytics",
             key = "#userId + ':daily:' + #date"
     )
     @Transactional(readOnly = true)
-    public BigDecimal getDailyEmissions(
-            Long userId,
-            LocalDate date) {
+    public Map<String, Object> getDailyEmissions(
+            Long userId, LocalDate date) {
 
-        validateUserId(userId);
-        validateDate(date);
+        BigDecimal total =
+                activityLogRepository.sumEmissionsByUserAndDateRange(
+                        userId, date, date.plusDays(1));
 
-        return getEmissionsByDateRange(
-                userId,
-                date,
-                date.plusDays(1));
+        return createResponse(userId, total, "daily", date);
     }
 
-    // Weekly analytics with Redis caching
     @Cacheable(
             cacheNames = "analytics",
             key = "#userId + ':weekly:' + #date"
     )
     @Transactional(readOnly = true)
-    public BigDecimal getWeeklyEmissions(
-            Long userId,
-            LocalDate date) {
+    public Map<String, Object> getWeeklyEmissions(
+            Long userId, LocalDate date) {
 
-        validateUserId(userId);
-        validateDate(date);
-
-        LocalDate weekStart = date.with(
+        LocalDate startDate = date.with(
                 TemporalAdjusters.previousOrSame(
-                        DayOfWeek.MONDAY));
+                        java.time.DayOfWeek.MONDAY));
 
-        return getEmissionsByDateRange(
-                userId,
-                weekStart,
-                weekStart.plusWeeks(1));
+        BigDecimal total =
+                activityLogRepository.sumEmissionsByUserAndDateRange(
+                        userId, startDate, startDate.plusWeeks(1));
+
+        return createResponse(userId, total, "weekly", startDate);
     }
 
-    // Monthly analytics with Redis caching
     @Cacheable(
             cacheNames = "analytics",
             key = "#userId + ':monthly:' + #date"
     )
     @Transactional(readOnly = true)
-    public BigDecimal getMonthlyEmissions(
+    public Map<String, Object> getMonthlyEmissions(
+            Long userId, LocalDate date) {
+
+        LocalDate startDate = date.withDayOfMonth(1);
+
+        BigDecimal total =
+                activityLogRepository.sumEmissionsByUserAndDateRange(
+                        userId, startDate, startDate.plusMonths(1));
+
+        return createResponse(userId, total, "monthly", startDate);
+    }
+
+    private Map<String, Object> createResponse(
             Long userId,
+            BigDecimal total,
+            String period,
             LocalDate date) {
 
-        validateUserId(userId);
-        validateDate(date);
+        Map<String, Object> response = new LinkedHashMap<>();
+        response.put(
+                "co2eKg",
+                total != null ? total : BigDecimal.ZERO);
+        response.put("period", period);
+        response.put("date", date);
+        response.put("userId", userId);
 
-        LocalDate monthStart = date.withDayOfMonth(1);
-
-        return getEmissionsByDateRange(
-                userId,
-                monthStart,
-                monthStart.plusMonths(1));
-    }
-
-    // Validate user ID
-    private void validateUserId(Long userId) {
-
-        if (userId == null || userId <= 0) {
-            throw new IllegalArgumentException(
-                    "User ID must be a positive number.");
-        }
-    }
-
-    // Validate date
-    private void validateDate(LocalDate date) {
-
-        if (date == null) {
-            throw new IllegalArgumentException(
-                    "Date cannot be null.");
-        }
+        return response;
     }
 }
