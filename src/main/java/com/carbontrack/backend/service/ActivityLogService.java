@@ -1,14 +1,17 @@
-
 package com.carbontrack.backend.service;
 
 import com.carbontrack.backend.entity.ActivityLog;
+import com.carbontrack.backend.event.ActivityLoggedEvent;
 import com.carbontrack.backend.repository.ActivityLogRepository;
+
 import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.temporal.TemporalAdjusters;
 import java.util.LinkedHashMap;
@@ -20,12 +23,16 @@ public class ActivityLogService {
 
     private final ActivityLogRepository activityLogRepository;
     private final EmissionCalculationService emissionCalculationService;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ActivityLogService(
             ActivityLogRepository activityLogRepository,
-            EmissionCalculationService emissionCalculationService) {
+            EmissionCalculationService emissionCalculationService,
+            ApplicationEventPublisher eventPublisher) {
+
         this.activityLogRepository = activityLogRepository;
         this.emissionCalculationService = emissionCalculationService;
+        this.eventPublisher = eventPublisher;
     }
 
     @Transactional
@@ -58,6 +65,7 @@ public class ActivityLogService {
         if (calculation == null
                 || calculation.co2eKg() == null
                 || calculation.emissionFactorId() == null) {
+
             throw new IllegalStateException(
                     "Emission calculation did not return a valid result");
         }
@@ -71,7 +79,17 @@ public class ActivityLogService {
             activityLog.setSource("MANUAL");
         }
 
-        return activityLogRepository.save(activityLog);
+        ActivityLog savedActivity =
+                activityLogRepository.save(activityLog);
+
+        eventPublisher.publishEvent(
+                new ActivityLoggedEvent(
+                        savedActivity.getUserId(),
+                        savedActivity.getLogDate()
+                )
+        );
+
+        return savedActivity;
     }
 
     @Transactional(readOnly = true)
@@ -103,8 +121,7 @@ public class ActivityLogService {
             Long userId, LocalDate date) {
 
         LocalDate startDate = date.with(
-                TemporalAdjusters.previousOrSame(
-                        java.time.DayOfWeek.MONDAY));
+                TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
 
         BigDecimal total =
                 activityLogRepository.sumEmissionsByUserAndDateRange(
@@ -137,9 +154,11 @@ public class ActivityLogService {
             LocalDate date) {
 
         Map<String, Object> response = new LinkedHashMap<>();
+
         response.put(
                 "co2eKg",
                 total != null ? total : BigDecimal.ZERO);
+
         response.put("period", period);
         response.put("date", date);
         response.put("userId", userId);
