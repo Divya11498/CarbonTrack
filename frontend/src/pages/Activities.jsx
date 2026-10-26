@@ -215,10 +215,15 @@ export default function Activities({ onAddActivity }) {
         .activities-page {
           width: 100%;
           max-width: 1000px;
-          margin: 0 auto;
+          margin: 24px auto;
+          display: flex;
+          justify-content: center;
         }
 
         .activity-form-panel {
+          width: 100%;
+          max-width: 760px;
+          box-sizing: border-box;
           padding: 32px;
           border-radius: 18px;
         }

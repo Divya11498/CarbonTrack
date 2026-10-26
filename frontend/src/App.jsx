@@ -1,6 +1,5 @@
 
 import { useEffect, useState } from "react";
-import { Bell, UserRound } from "lucide-react";
 import { apiRequest } from "./api";
 
 import Sidebar from "./components/Sidebar";
@@ -9,6 +8,8 @@ import Dashboard from "./pages/Dashboard";
 import Goals from "./pages/Goals";
 import Leaderboard from "./pages/Leaderboard";
 import Organisation from "./pages/Organisation";
+import Achievements from "./components/Achievements";
+
 import Login from "./auth/Login";
 import Register from "./auth/Register";
 
@@ -49,14 +50,16 @@ function normalizeActivity(item) {
     date: item.logDate ?? item.date ?? "",
     co2e: Number(item.co2eKg ?? item.co2e ?? 0),
     category:
-        item.category ??
-        categoryNames[item.categoryId] ??
-        "Other",
+      item.category?.name ??
+      item.category ??
+      categoryNames[item.categoryId] ??
+      "Other",
     activity:
-        item.activity ??
-        item.activityName ??
-        activityNames[item.activityTypeId] ??
-        "Activity",
+      item.activity ??
+      item.activityName ??
+      item.activityType?.name ??
+      activityNames[item.activityTypeId] ??
+      "Activity",
   };
 }
 
@@ -65,11 +68,15 @@ export default function App() {
   const [authPage, setAuthPage] = useState("login");
 
   const [token, setToken] = useState(
-      () => sessionStorage.getItem("carbontrack_token") || ""
+    () => sessionStorage.getItem("carbontrack_token") || ""
   );
 
   const [email, setEmail] = useState(
-      () => sessionStorage.getItem("carbontrack_email") || ""
+    () => sessionStorage.getItem("carbontrack_email") || ""
+  );
+
+  const [userName, setUserName] = useState(
+    () => sessionStorage.getItem("carbontrack_userName") || ""
   );
 
   const [authError, setAuthError] = useState("");
@@ -77,11 +84,24 @@ export default function App() {
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [monthlyTarget, setMonthlyTarget] = useState(200);
 
-  // Load saved activities whenever the authenticated token changes.
+  function clearSession(message = "") {
+    sessionStorage.removeItem("carbontrack_token");
+    sessionStorage.removeItem("carbontrack_email");
+    sessionStorage.removeItem("carbontrack_userName");
+
+    setToken("");
+    setEmail("");
+    setUserName("");
+    setActivities([]);
+    setAuthPage("login");
+    setAuthError(message);
+    setActivePage("Dashboard");
+  }
+
   useEffect(() => {
     if (!token) {
       setActivities([]);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -98,7 +118,7 @@ export default function App() {
 
         if (!Array.isArray(response)) {
           throw new Error(
-              "The activities endpoint did not return a list."
+            "The activities endpoint did not return a list."
           );
         }
 
@@ -106,9 +126,15 @@ export default function App() {
           setActivities(response.map(normalizeActivity));
         }
       } catch (error) {
-        if (!cancelled) {
+        if (cancelled) return;
+
+        if (error.message?.includes("401")) {
+          clearSession(
+            "Your session is invalid or expired. Please sign in again."
+          );
+        } else {
           setAuthError(
-              error.message || "Unable to load saved activities."
+            error.message || "Unable to load saved activities."
           );
         }
       } finally {
@@ -125,49 +151,67 @@ export default function App() {
     };
   }, [token]);
 
-  function handleLogin(receivedToken, loginEmail) {
+  function handleLogin(receivedToken, loginEmail, loginName) {
+    const normalizedEmail = loginEmail.trim().toLowerCase();
+
+    const savedName =
+      localStorage.getItem(`carbontrack_name_${normalizedEmail}`) || "";
+
+    const finalName =
+      loginName && loginName !== "User"
+        ? loginName
+        : savedName || "User";
+
     sessionStorage.setItem("carbontrack_token", receivedToken);
     sessionStorage.setItem("carbontrack_email", loginEmail);
+    sessionStorage.setItem("carbontrack_userName", finalName);
 
     setToken(receivedToken);
     setEmail(loginEmail);
+    setUserName(finalName);
     setAuthError("");
-    setActivePage("Dashboard");
   }
 
-  async function handleRegister(name, registerEmail, password) {
+  async function handleRegister({
+    name,
+    email: registerEmail,
+    password,
+  }) {
     setAuthError("");
+
+    const trimmedName = name.trim();
+    const trimmedEmail = registerEmail.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
 
     try {
       await apiRequest("/api/auth/register", {
         method: "POST",
         body: {
-          name,
-          email: registerEmail.trim(),
+          name: trimmedName,
+          email: trimmedEmail,
           password,
         },
       });
 
+      // Remember the registered name for this browser.
+      localStorage.setItem(
+        `carbontrack_name_${normalizedEmail}`,
+        trimmedName
+      );
+
       setAuthPage("login");
       setAuthError(
-          "Account created successfully. Please sign in with your new account."
+        "Account created successfully. Please sign in with your new account."
       );
     } catch (error) {
-      setAuthError(error.message || "Unable to create account.");
-      throw error;
+      setAuthError(
+        error.message || "Unable to create account."
+      );
     }
   }
 
   function handleLogout() {
-    sessionStorage.removeItem("carbontrack_token");
-    sessionStorage.removeItem("carbontrack_email");
-
-    setToken("");
-    setEmail("");
-    setActivities([]);
-    setAuthPage("login");
-    setAuthError("");
-    setActivePage("Dashboard");
+    clearSession();
   }
 
   async function handleAddActivity(activity) {
@@ -187,7 +231,16 @@ export default function App() {
 
       return normalized;
     } catch (error) {
-      setAuthError(error.message || "Unable to save activity.");
+      if (error.message?.includes("401")) {
+        clearSession(
+          "Your session is invalid or expired. Please sign in again."
+        );
+      } else {
+        setAuthError(
+          error.message || "Unable to save activity."
+        );
+      }
+
       throw error;
     }
   }
@@ -195,92 +248,82 @@ export default function App() {
   if (!token) {
     if (authPage === "register") {
       return (
-          <>
-            {authError && <p role="alert">{authError}</p>}
+        <>
+          {authError && <p role="alert">{authError}</p>}
 
-            <Register
-                onRegister={handleRegister}
-                onLogin={() => {
-                  setAuthPage("login");
-                  setAuthError("");
-                }}
-            />
-          </>
+          <Register
+            onRegister={handleRegister}
+            onLogin={() => {
+              setAuthPage("login");
+              setAuthError("");
+            }}
+          />
+        </>
       );
     }
 
     return (
-        <>
-          {authError && <p role="status">{authError}</p>}
+      <>
+        {authError && <p role="status">{authError}</p>}
 
-          <Login
-              onLogin={handleLogin}
-              onRegister={() => {
-                setAuthPage("register");
-                setAuthError("");
-              }}
-          />
-        </>
+        <Login
+          onLogin={handleLogin}
+          onRegister={() => {
+            setAuthPage("register");
+            setAuthError("");
+          }}
+        />
+      </>
     );
   }
 
   return (
-      <div className="app-layout">
-        <Sidebar
-            activePage={activePage}
-            onNavigate={setActivePage}
-        />
+    <div className="app-layout">
+      <Sidebar
+        activePage={activePage}
+        onNavigate={setActivePage}
+        userName={userName}
+        onLogout={handleLogout}
+      />
 
-        <main className="main-content">
-          <header className="topbar">
-            <div>
-              <h1>Welcome to CarbonTrack 🌱</h1>
-              <p>Track your activities. Build a greener future.</p>
-            </div>
+      <main className="main-content">
+        {authError && <p role="alert">{authError}</p>}
 
-            <div className="profile">
-              <Bell size={20} />
-              <UserRound size={20} />
-              <span>{email || "User"}</span>
+        {activePage === "Dashboard" ? (
+          <>
+            {activitiesLoading && (
+              <p>Loading your saved activities...</p>
+            )}
 
-              <button type="button" onClick={handleLogout}>
-                Logout
-              </button>
-            </div>
-          </header>
-
-          {authError && <p role="alert">{authError}</p>}
-
-          {activePage === "Dashboard" ? (
-              <>
-                {activitiesLoading && (
-                    <p>Loading your saved activities...</p>
-                )}
-
-                <Dashboard
-                    activities={activities}
-                    monthlyTarget={monthlyTarget}
-                />
-              </>
-          ) : activePage === "Log Activities" ? (
-              <Activities onAddActivity={handleAddActivity} />
-          ) : activePage === "Goals" ? (
-              <Goals
-                  activities={activities}
-                  monthlyTarget={monthlyTarget}
-                  onUpdateTarget={setMonthlyTarget}
-              />
-          ) : activePage === "Leaderboard" ? (
-              <Leaderboard />
-          ) : activePage === "Organisation" ? (
-              <Organisation />
-          ) : (
-              <section className="panel welcome-panel">
-                <h2>{activePage}</h2>
-                <p>This page will be implemented next.</p>
-              </section>
-          )}
-        </main>
-      </div>
+            <Dashboard
+              activities={activities}
+              monthlyTarget={monthlyTarget}
+            />
+          </>
+        ) : activePage === "Log Activities" ? (
+          <Activities onAddActivity={handleAddActivity} />
+        ) : activePage === "Goals" ? (
+          <Goals
+            activities={activities}
+            monthlyTarget={monthlyTarget}
+            onUpdateTarget={setMonthlyTarget}
+          />
+        ) : activePage === "Leaderboard" ? (
+          <Leaderboard />
+        ) : activePage === "Organisation" ? (
+          <Organisation />
+        ) : activePage === "Achievements" ? (
+          <Achievements
+            activities={activities}
+            monthlyTarget={monthlyTarget}
+          />
+        ) : (
+          <section className="panel welcome-panel">
+            <h2>{activePage}</h2>
+            <p>This page will be implemented next.</p>
+          </section>
+        )}
+      </main>
+    </div>
   );
 }

@@ -25,7 +25,15 @@ export default function Login({ onLogin, onRegister }) {
         throw new Error("The backend did not return an authentication token.");
       }
 
-      onLogin(data.token, email.trim());
+      const savedName = localStorage.getItem(
+        `carbontrack_name_${email.trim().toLowerCase()}`
+      );
+
+      onLogin(
+        data.token,
+        email.trim(),
+        data.name || data.fullName || savedName || "User"
+      );
     } catch (err) {
       setError(err.message || "Unable to sign in. Please try again.");
     } finally {

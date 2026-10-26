@@ -10,22 +10,38 @@ export default function Register({ onRegister, onLogin }) {
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
 
-  const handleSubmit = (event) => {
-    event.preventDefault();
 
-    if (password.length < 8) {
-      setError("Password must contain at least 8 characters.");
-      return;
-    }
+const handleSubmit = (event) => {
+  event.preventDefault();
 
-    if (password !== confirmPassword) {
-      setError("Passwords do not match.");
-      return;
-    }
+  const trimmedName = name.trim();
+  const trimmedEmail = email.trim();
 
-    setError("");
-    onRegister();
-  };
+  if (!trimmedName || !trimmedEmail) {
+    setError("Please enter your name and email address.");
+    return;
+  }
+
+  if (password.length < 8) {
+    setError("Password must contain at least 8 characters.");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    setError("Passwords do not match.");
+    return;
+  }
+
+  setError("");
+
+  // Pass the form data to the parent component.
+  onRegister({
+    name: trimmedName,
+    email: trimmedEmail,
+    password,
+  });
+};
+
 
   return (
     <div className="auth-page">
