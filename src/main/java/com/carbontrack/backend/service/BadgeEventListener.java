@@ -33,11 +33,20 @@ public class BadgeEventListener {
     @EventListener
     @Transactional
     public void handleActivityLogged(ActivityLoggedEvent event) {
-        // The event's actual fields must be checked before using them.
-        // This listener will be updated to match ActivityLoggedEvent.
+        if (event == null || event.getUserId() == null
+                || event.getLogDate() == null) {
+            return;
+        }
+
+        awardSevenDayStreakBadge(
+                event.getUserId(),
+                event.getLogDate()
+        );
     }
 
-    private void awardSevenDayStreakBadge(Long userId, LocalDate logDate) {
+    private void awardSevenDayStreakBadge(
+            Long userId, LocalDate logDate) {
+
         List<ActivityLog> activities =
                 activityLogRepository.findByUserId(userId);
 
@@ -56,7 +65,8 @@ public class BadgeEventListener {
         }
 
         if (sevenConsecutiveDays
-                && badgeRepository.findByCode("week_warrior").isPresent()) {
+                && badgeRepository.findByCode("week_warrior")
+                .isPresent()) {
             badgeService.awardBadge(userId, "week_warrior");
         }
     }
