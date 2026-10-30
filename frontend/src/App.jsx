@@ -1,6 +1,5 @@
 
 import { useEffect, useState } from "react";
-import { Bell, UserRound } from "lucide-react";
 import { apiRequest } from "./api";
 
 import Sidebar from "./components/Sidebar";
@@ -9,6 +8,9 @@ import Dashboard from "./pages/Dashboard";
 import Goals from "./pages/Goals";
 import Leaderboard from "./pages/Leaderboard";
 import Organisation from "./pages/Organisation";
+import Achievements from "./components/Achievements";
+import Recommendations from "./pages/Recommendations";
+
 import Login from "./auth/Login";
 import Register from "./auth/Register";
 
@@ -49,12 +51,14 @@ function normalizeActivity(item) {
     date: item.logDate ?? item.date ?? "",
     co2e: Number(item.co2eKg ?? item.co2e ?? 0),
     category:
+        item.category?.name ??
         item.category ??
         categoryNames[item.categoryId] ??
         "Other",
     activity:
         item.activity ??
         item.activityName ??
+        item.activityType?.name ??
         activityNames[item.activityTypeId] ??
         "Activity",
   };
@@ -72,16 +76,34 @@ export default function App() {
       () => sessionStorage.getItem("carbontrack_email") || ""
   );
 
+  const [userName, setUserName] = useState(
+      () => sessionStorage.getItem("carbontrack_userName") || ""
+  );
+
   const [authError, setAuthError] = useState("");
   const [activities, setActivities] = useState([]);
   const [activitiesLoading, setActivitiesLoading] = useState(false);
   const [monthlyTarget, setMonthlyTarget] = useState(200);
 
-  // Load saved activities whenever the authenticated token changes.
+  function clearSession(message = "") {
+    sessionStorage.removeItem("carbontrack_token");
+    sessionStorage.removeItem("carbontrack_email");
+    sessionStorage.removeItem("carbontrack_userName");
+
+    setToken("");
+    setEmail("");
+    setUserName("");
+    setActivities([]);
+    setAuthPage("login");
+    setAuthError(message);
+    setActivePage("Dashboard");
+  }
+
+  // Load saved activities after authentication.
   useEffect(() => {
     if (!token) {
       setActivities([]);
-      return;
+      return undefined;
     }
 
     let cancelled = false;
@@ -106,7 +128,13 @@ export default function App() {
           setActivities(response.map(normalizeActivity));
         }
       } catch (error) {
-        if (!cancelled) {
+        if (cancelled) return;
+
+        if (error.message?.includes("401")) {
+          clearSession(
+              "Your session is invalid or expired. Please sign in again."
+          );
+        } else {
           setAuthError(
               error.message || "Unable to load saved activities."
           );
@@ -125,51 +153,76 @@ export default function App() {
     };
   }, [token]);
 
-  function handleLogin(receivedToken, loginEmail) {
+  // Handle successful login.
+  function handleLogin(receivedToken, loginEmail, loginName) {
+    const normalizedEmail = loginEmail.trim().toLowerCase();
+
+    const savedName =
+        localStorage.getItem(
+            `carbontrack_name_${normalizedEmail}`
+        ) || "";
+
+    const finalName =
+        loginName && loginName !== "User"
+            ? loginName
+            : savedName || "User";
+
     sessionStorage.setItem("carbontrack_token", receivedToken);
     sessionStorage.setItem("carbontrack_email", loginEmail);
+    sessionStorage.setItem("carbontrack_userName", finalName);
 
     setToken(receivedToken);
     setEmail(loginEmail);
+    setUserName(finalName);
     setAuthError("");
     setActivePage("Dashboard");
   }
 
-  async function handleRegister(name, registerEmail, password) {
+  // Handle registration.
+  async function handleRegister({
+                                  name,
+                                  email: registerEmail,
+                                  password,
+                                }) {
     setAuthError("");
+
+    const trimmedName = name.trim();
+    const trimmedEmail = registerEmail.trim();
+    const normalizedEmail = trimmedEmail.toLowerCase();
 
     try {
       await apiRequest("/api/auth/register", {
         method: "POST",
         body: {
-          name,
-          email: registerEmail.trim(),
+          name: trimmedName,
+          email: trimmedEmail,
           password,
         },
       });
+
+      localStorage.setItem(
+          `carbontrack_name_${normalizedEmail}`,
+          trimmedName
+      );
 
       setAuthPage("login");
       setAuthError(
           "Account created successfully. Please sign in with your new account."
       );
     } catch (error) {
-      setAuthError(error.message || "Unable to create account.");
+      setAuthError(
+          error.message || "Unable to create account."
+      );
       throw error;
     }
   }
 
+  // Handle logout.
   function handleLogout() {
-    sessionStorage.removeItem("carbontrack_token");
-    sessionStorage.removeItem("carbontrack_email");
-
-    setToken("");
-    setEmail("");
-    setActivities([]);
-    setAuthPage("login");
-    setAuthError("");
-    setActivePage("Dashboard");
+    clearSession();
   }
 
+  // Save a new activity through the backend.
   async function handleAddActivity(activity) {
     setAuthError("");
 
@@ -182,21 +235,37 @@ export default function App() {
 
       const normalized = normalizeActivity(saved);
 
-      setActivities((previous) => [...previous, normalized]);
+      setActivities((previous) => [
+        ...previous,
+        normalized,
+      ]);
+
       setActivePage("Dashboard");
 
       return normalized;
     } catch (error) {
-      setAuthError(error.message || "Unable to save activity.");
+      if (error.message?.includes("401")) {
+        clearSession(
+            "Your session is invalid or expired. Please sign in again."
+        );
+      } else {
+        setAuthError(
+            error.message || "Unable to save activity."
+        );
+      }
+
       throw error;
     }
   }
 
+  // Authentication pages.
   if (!token) {
     if (authPage === "register") {
       return (
           <>
-            {authError && <p role="alert">{authError}</p>}
+            {authError && (
+                <p role="alert">{authError}</p>
+            )}
 
             <Register
                 onRegister={handleRegister}
@@ -211,7 +280,9 @@ export default function App() {
 
     return (
         <>
-          {authError && <p role="status">{authError}</p>}
+          {authError && (
+              <p role="status">{authError}</p>
+          )}
 
           <Login
               onLogin={handleLogin}
@@ -224,32 +295,20 @@ export default function App() {
     );
   }
 
+  // Main application.
   return (
       <div className="app-layout">
         <Sidebar
             activePage={activePage}
             onNavigate={setActivePage}
+            userName={userName}
+            onLogout={handleLogout}
         />
 
         <main className="main-content">
-          <header className="topbar">
-            <div>
-              <h1>Welcome to CarbonTrack 🌱</h1>
-              <p>Track your activities. Build a greener future.</p>
-            </div>
-
-            <div className="profile">
-              <Bell size={20} />
-              <UserRound size={20} />
-              <span>{email || "User"}</span>
-
-              <button type="button" onClick={handleLogout}>
-                Logout
-              </button>
-            </div>
-          </header>
-
-          {authError && <p role="alert">{authError}</p>}
+          {authError && (
+              <p role="alert">{authError}</p>
+          )}
 
           {activePage === "Dashboard" ? (
               <>
@@ -270,10 +329,17 @@ export default function App() {
                   monthlyTarget={monthlyTarget}
                   onUpdateTarget={setMonthlyTarget}
               />
+          ) : activePage === "Recommendations" ? (
+              <Recommendations token={token} />
           ) : activePage === "Leaderboard" ? (
               <Leaderboard />
           ) : activePage === "Organisation" ? (
               <Organisation />
+          ) : activePage === "Achievements" ? (
+              <Achievements
+                  activities={activities}
+                  token={token}
+              />
           ) : (
               <section className="panel welcome-panel">
                 <h2>{activePage}</h2>
