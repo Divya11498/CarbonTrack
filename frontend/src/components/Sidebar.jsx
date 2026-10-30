@@ -5,25 +5,21 @@ import {
   Target,
   Trophy,
   Building2,
-  Leaf,
-  Award,
-  LogOut,
-  UserRound,
+  Leaf
 } from "lucide-react";
 
 const menuItems = [
   { label: "Dashboard", icon: LayoutDashboard },
   { label: "Log Activities", icon: ClipboardList },
   { label: "Goals", icon: Target },
-  { label: "Achievements", icon: Award },
   { label: "Leaderboard", icon: Trophy },
-  { label: "Organisation", icon: Building2 },
+  { label: "Organisation", icon: Building2 }
 ];
 
 export default function Sidebar({
   activePage,
   onNavigate,
-  userName,
+                                    userName,
   onLogout,
 }) {
   return (
@@ -31,25 +27,25 @@ export default function Sidebar({
       <h2 className="brand">
         <Leaf size={26} />
         <span>CarbonTrack</span>
-      </h2>
+            </h2>
 
-      <nav className="sidebar-nav">
-        {menuItems.map(({ label, icon: Icon }) => (
-          <button
-            key={label}
-            type="button"
-            className={`nav-item ${
-              activePage === label ? "active" : ""
-            }`}
-            onClick={() => onNavigate(label)}
-          >
-            <Icon size={20} />
-            <span>{label}</span>
-          </button>
-        ))}
-      </nav>
+            <nav className="sidebar-nav">
+                {menuItems.map(({ label, icon: Icon }) => (
+                    <button
+                        key={label}
+                        type="button"
+                        className={`nav-item ${
+                            activePage === label ? "active" : ""
+                        }`}
+                        onClick={() => onNavigate(label)}
+                    >
+                        <Icon size={20} />
+                        <span>{label}</span>
+                    </button>
+                ))}
+            </nav>
 
-      <div className="sidebar-bottom">
+            <div className="sidebar-bottom">
         <p className="sidebar-footer">
           Track less. Sustain more.
         </p>
@@ -79,6 +75,6 @@ export default function Sidebar({
           <span>Logout</span>
         </button>
       </div>
-    </aside>
-  );
+        </aside>
+    );
 }
