@@ -9,6 +9,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,6 +26,9 @@ class ActivityLogServiceTest {
 
     @Mock
     private EmissionCalculationService emissionCalculationService;
+
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks
     private ActivityLogService activityLogService;
@@ -64,6 +68,8 @@ class ActivityLogServiceTest {
         ActivityLog savedActivity =
                 activityLogService.createActivity(activityLog);
 
+        assertNotNull(savedActivity);
+
         assertEquals(
                 0,
                 new BigDecimal("4.800")
@@ -86,6 +92,7 @@ class ActivityLogServiceTest {
 
     @Test
     void rejectsNullActivity() {
+
         assertThrows(
                 IllegalArgumentException.class,
                 () -> activityLogService.createActivity(null)
