@@ -1,193 +1,245 @@
-import { useMemo, useState } from "react";
-import { Trophy, Medal, Award, Leaf, Search, TrendingDown, Users } from "lucide-react";
+import { useState, useEffect, useMemo } from "react";
+import {
+  Trophy,
+  Medal,
+  Award,
+  Leaf,
+  Search,
+  TrendingDown,
+  Users,
+  RefreshCw,
+  AlertCircle,
+  Sparkles,
+} from "lucide-react";
+import { apiRequest } from "../api";
 
-const sampleUsers = [
-  { id: 1, name: "Eco Champion", emissions: 12.5, badge: "Gold Leaf", strength: "Transport" },
-  { id: 2, name: "Green Guardian", emissions: 18.2, badge: "Silver Leaf", strength: "Electricity" },
-  { id: 3, name: "Earth Saver", emissions: 24.8, badge: "Bronze Leaf", strength: "Food" },
-  { id: 4, name: "Eco Explorer", emissions: 31.4, badge: "Green Starter", strength: "Shopping" },
-  { id: 5, name: "Planet Protector", emissions: 36.7, badge: "Green Starter", strength: "Transport" },
-];
-
-const periodMultipliers = { week: 0.25, month: 1, all: 4.2 };
-
-export default function Leaderboard() {
+export default function Leaderboard({ token }) {
   const [period, setPeriod] = useState("month");
   const [searchTerm, setSearchTerm] = useState("");
-  const [sortBy, setSortBy] = useState("emissions");
-  const [sortOrder, setSortOrder] = useState("asc");
+  const [leaderboardData, setLeaderboardData] = useState([]);
+  const [currentUserRank, setCurrentUserRank] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
 
-  const users = useMemo(() => {
-    const multiplier = periodMultipliers[period];
-    return sampleUsers
-      .map((user) => ({
-        ...user,
-        periodEmissions: user.emissions * multiplier,
-      }))
-      .filter((user) => user.name.toLowerCase().includes(searchTerm.trim().toLowerCase()))
-      .sort((a, b) => {
-        const comparison =
-          sortBy === "name"
-            ? a.name.localeCompare(b.name)
-            : a.periodEmissions - b.periodEmissions;
-        return sortOrder === "asc" ? comparison : -comparison;
-      });
-  }, [period, searchTerm, sortBy, sortOrder]);
-
-  const podiumUsers = [...users].sort((a, b) => a.periodEmissions - b.periodEmissions).slice(0, 3);
-  const rankMap = new Map(
-    [...users]
-      .sort((a, b) => a.periodEmissions - b.periodEmissions)
-      .map((user, index) => [user.id, index + 1])
-  );
-
-  const toggleSort = (column) => {
-    if (sortBy === column) {
-      setSortOrder((current) => (current === "asc" ? "desc" : "asc"));
-    } else {
-      setSortBy(column);
-      setSortOrder(column === "name" ? "asc" : "asc");
+  const loadLeaderboard = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await apiRequest(`/api/leaderboard?period=${period}`, { token });
+      setLeaderboardData(res?.leaderboard || []);
+      setCurrentUserRank(res?.currentUserRank || null);
+    } catch (err) {
+      setError(err.message || "Failed to load community leaderboard.");
+    } finally {
+      setLoading(false);
     }
   };
 
+  useEffect(() => {
+    if (token) loadLeaderboard();
+  }, [token, period]);
+
+  const filteredUsers = useMemo(() => {
+    return leaderboardData.filter((u) =>
+      (u.name || "").toLowerCase().includes(searchTerm.trim().toLowerCase())
+    );
+  }, [leaderboardData, searchTerm]);
+
+  const topThree = leaderboardData.slice(0, 3);
+
   return (
-    <div className="page-content leaderboard-page">
-      <div className="page-heading">
-        <h2>Community Leaderboard 🏆</h2>
-        <p>Celebrate sustainable choices and learn from the community.</p>
+    <div className="leaderboard-page-wrapper">
+      <div className="page-heading-row">
+        <div>
+          <h2>Leaderboard</h2>
+          <p>Community rankings and eco-performers.</p>
+        </div>
+
+        <div className="timeframe-buttons">
+          {["week", "month", "year"].map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`time-btn ${period === p ? "active" : ""}`}
+              onClick={() => setPeriod(p)}
+            >
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
+          <button
+            type="button"
+            className="btn-refresh-icon"
+            onClick={loadLeaderboard}
+            title="Refresh leaderboard"
+          >
+            <RefreshCw size={16} />
+          </button>
+        </div>
       </div>
 
-      <section className="leaderboard-highlight">
-        <div className="leaderboard-highlight-icon"><Trophy size={34} /></div>
-        <div>
-          <h3>Small actions. Big impact.</h3>
-          <p>Compare community footprints, celebrate progress, and find inspiration for greener choices.</p>
+      {error && (
+        <div className="auth-error-banner" role="alert">
+          <AlertCircle size={16} />
+          <span>{error}</span>
         </div>
-        <div className="leaderboard-community-count">
-          <Users size={20} />
-          <span><strong>{sampleUsers.length}</strong><small>demo members</small></span>
+      )}
+
+      {/* Podium Cards for Top 3 */}
+      {topThree.length >= 3 && (
+        <div className="podium-section">
+          {/* 2nd Place */}
+          <div className="podium-card rank-second">
+            <div className="podium-badge bg-silver">
+              <Medal size={22} />
+              <span>2nd Place</span>
+            </div>
+            <div className="podium-avatar">
+              {topThree[1].avatarUrl ? (
+                <img src={topThree[1].avatarUrl} alt={topThree[1].name} />
+              ) : (
+                topThree[1].name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <h4>{topThree[1].name}</h4>
+            <span className="podium-score">Score: {topThree[1].score}/100</span>
+            <p className="podium-emissions">
+              {Number(topThree[1].emissions).toFixed(1)} kg CO₂e
+            </p>
+          </div>
+
+          {/* 1st Place */}
+          <div className="podium-card rank-first">
+            <div className="crown-badge">
+              <Sparkles size={16} /> Champion
+            </div>
+            <div className="podium-badge bg-gold">
+              <Trophy size={26} />
+              <span>1st Place</span>
+            </div>
+            <div className="podium-avatar large">
+              {topThree[0].avatarUrl ? (
+                <img src={topThree[0].avatarUrl} alt={topThree[0].name} />
+              ) : (
+                topThree[0].name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <h4>{topThree[0].name}</h4>
+            <span className="podium-score gold-score">Score: {topThree[0].score}/100</span>
+            <p className="podium-emissions">
+              {Number(topThree[0].emissions).toFixed(1)} kg CO₂e
+            </p>
+          </div>
+
+          {/* 3rd Place */}
+          <div className="podium-card rank-third">
+            <div className="podium-badge bg-bronze">
+              <Award size={22} />
+              <span>3rd Place</span>
+            </div>
+            <div className="podium-avatar">
+              {topThree[2].avatarUrl ? (
+                <img src={topThree[2].avatarUrl} alt={topThree[2].name} />
+              ) : (
+                topThree[2].name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <h4>{topThree[2].name}</h4>
+            <span className="podium-score">Score: {topThree[2].score}/100</span>
+            <p className="podium-emissions">
+              {Number(topThree[2].emissions).toFixed(1)} kg CO₂e
+            </p>
+          </div>
         </div>
-      </section>
+      )}
 
-      <section className="leaderboard-podium-section">
-        <div className="leaderboard-section-heading">
-          <div>
-            <h3>Top Community Members</h3>
-            <p>Ranked by the lowest recorded emissions for the selected period.</p>
+      {/* User Current Position Banner */}
+      {currentUserRank && currentUserRank > 0 && (
+        <div className="my-rank-banner">
+          <div className="rank-info">
+            <span className="rank-number">Your Rank: #{currentUserRank}</span>
+            <span className="rank-sub">Keep logging activities to rise on the leaderboard!</span>
           </div>
-          <label className="leaderboard-period-control">
-            <span>Period</span>
-            <select value={period} onChange={(event) => setPeriod(event.target.value)}>
-              <option value="week">This week</option>
-              <option value="month">This month</option>
-              <option value="all">All time</option>
-            </select>
-          </label>
+          <span className="badge-pill-green">Verified Participant</span>
         </div>
+      )}
 
-        {podiumUsers.length > 0 ? (
-          <div className="leaderboard-podium">
-            {podiumUsers.map((user, index) => {
-              const rank = index + 1;
-              return (
-                <article className={`leaderboard-podium-card podium-rank-${rank}`} key={user.id}>
-                  <div className="podium-medal">
-                    {rank === 1 ? <Trophy size={28} /> : <Medal size={26} />}
-                  </div>
-                  <span className="podium-rank-label">{rank === 1 ? "1st place" : rank === 2 ? "2nd place" : "3rd place"}</span>
-                  <div className="podium-avatar">{user.name.charAt(0)}</div>
-                  <h4>{user.name}</h4>
-                  <p className="podium-emissions">{user.periodEmissions.toFixed(2)} <span>kg CO₂e</span></p>
-                  <span className="leaderboard-badge"><Award size={14} />{user.badge}</span>
-                  <small className="podium-strength"><Leaf size={13} /> Strong in {user.strength}</small>
-                </article>
-              );
-            })}
-          </div>
-        ) : (
-          <p className="leaderboard-empty">No members match your search. Try another name.</p>
-        )}
-        <p className="leaderboard-note">Demonstration data only. Period values are illustrative; real rankings and emissions will come from the backend API.</p>
-      </section>
-
-      <section className="panel leaderboard-table-panel">
-        <div className="leaderboard-section-heading leaderboard-table-heading">
-          <div>
-            <h3>Community Rankings</h3>
-            <p>{users.length} member{users.length === 1 ? "" : "s"} shown</p>
-          </div>
-          <label className="leaderboard-search">
-            <Search size={17} />
+      {/* Full Leaderboard Table */}
+      <div className="panel leaderboard-table-card">
+        <div className="table-filter-bar">
+          <div className="search-input-wrap">
+            <Search size={16} />
             <input
-              type="search"
+              type="text"
+              placeholder="Search member name..."
               value={searchTerm}
-              onChange={(event) => setSearchTerm(event.target.value)}
-              placeholder="Search members"
-              aria-label="Search community members"
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
-          </label>
+          </div>
+          <span className="count-tag">{filteredUsers.length} Participants</span>
         </div>
 
-        <div className="table-scroll">
-          <table className="activity-table leaderboard-table">
-            <thead>
-              <tr>
-                <th>Rank</th>
-                <th><button type="button" className="leaderboard-sort-button" onClick={() => toggleSort("name")}>Member {sortBy === "name" ? (sortOrder === "asc" ? "↑" : "↓") : ""}</button></th>
-                <th><button type="button" className="leaderboard-sort-button" onClick={() => toggleSort("emissions")}>CO₂e {sortBy === "emissions" ? (sortOrder === "asc" ? "↑" : "↓") : ""}</button></th>
-                <th>Badge</th>
-                <th>Strongest Category</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((user) => {
-                const rank = rankMap.get(user.id);
-                return (
-                  <tr key={user.id}>
-                    <td>
-                      <span className={`leaderboard-rank ${rank <= 3 ? `leaderboard-rank-${rank}` : ""}`}>
-                        {rank === 1 ? <Trophy size={17} /> : rank === 2 ? <Medal size={17} /> : rank === 3 ? <Medal size={17} /> : `#${rank}`}
+        {loading ? (
+          <div className="loading-state-box">Loading community rankings...</div>
+        ) : filteredUsers.length === 0 ? (
+          <div className="empty-state-box">No participants found matching "{searchTerm}".</div>
+        ) : (
+          <div className="table-responsive">
+            <table className="leaderboard-table">
+              <thead>
+                <tr>
+                  <th>Rank</th>
+                  <th>Member</th>
+                  <th>Top Strength</th>
+                  <th>Activities</th>
+                  <th>Emissions</th>
+                  <th>Eco Score</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filteredUsers.map((item) => (
+                  <tr
+                    key={item.userId}
+                    className={item.isCurrentUser ? "current-user-row" : ""}
+                  >
+                    <td className="cell-rank">
+                      <span className={`rank-pill rank-${item.rank}`}>
+                        #{item.rank}
                       </span>
                     </td>
-                    <td><strong>{user.name}</strong></td>
-                    <td><strong>{user.periodEmissions.toFixed(2)} kg</strong></td>
-                    <td><span className="leaderboard-badge"><Award size={14} />{user.badge}</span></td>
-                    <td><span className="leaderboard-category"><Leaf size={14} />{user.strength}</span></td>
+                    <td className="cell-member">
+                      <div className="member-avatar">
+                        {item.avatarUrl ? (
+                          <img src={item.avatarUrl} alt={item.name} />
+                        ) : (
+                          item.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <div>
+                        <strong>{item.name}</strong>
+                        {item.isCurrentUser && (
+                          <span className="you-pill">You</span>
+                        )}
+                      </div>
+                    </td>
+                    <td>
+                      <span className="strength-badge">{item.strength || "General"}</span>
+                    </td>
+                    <td>{item.activityCount || 0}</td>
+                    <td>
+                      <strong>{Number(item.emissions).toFixed(1)}</strong> kg CO₂e
+                    </td>
+                    <td>
+                      <span className="score-badge">
+                        {item.score} / 100
+                      </span>
+                    </td>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-        {users.length === 0 && <p className="leaderboard-empty">No matching members found.</p>}
-      </section>
-
-      <section className="panel leaderboard-tips-panel">
-        <div className="leaderboard-section-heading">
-          <div>
-            <h3>Tips for a Greener Lifestyle</h3>
-            <p>Small changes can make a measurable difference.</p>
+                ))}
+              </tbody>
+            </table>
           </div>
-          <TrendingDown size={22} />
-        </div>
-        <div className="leaderboard-tips">
-          <article>
-            <div className="leaderboard-tip-icon"><Leaf size={21} /></div>
-            <h4>Choose greener transport</h4>
-            <p>Walk, cycle, carpool, or use public transport when practical.</p>
-          </article>
-          <article>
-            <div className="leaderboard-tip-icon"><Leaf size={21} /></div>
-            <h4>Save electricity</h4>
-            <p>Switch off unused lights and appliances, and choose efficient devices.</p>
-          </article>
-          <article>
-            <div className="leaderboard-tip-icon"><Leaf size={21} /></div>
-            <h4>Reduce food waste</h4>
-            <p>Plan meals, store food properly, and use ingredients efficiently.</p>
-          </article>
-        </div>
-      </section>
+        )}
+      </div>
     </div>
   );
 }

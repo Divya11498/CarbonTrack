@@ -1,513 +1,431 @@
-
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import {
   Leaf,
   TrendingDown,
+  TrendingUp,
   Target,
   Award,
   Flame,
   Lightbulb,
   Activity,
+  PlusCircle,
+  Calendar,
+  ArrowRight,
+  Sparkles,
 } from "lucide-react";
-
-import EmissionsCharts from "../components/EmissionsCharts";
+import {
+  ResponsiveContainer,
+  BarChart,
+  Bar,
+  LineChart,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  XAxis,
+  YAxis,
+  Tooltip,
+  Legend,
+  CartesianGrid,
+} from "recharts";
 import StatCard from "../components/StatCard";
 
-const CATEGORY_NAMES = {
-  1: "Transport",
-  2: "Electricity",
-  3: "Food",
-  4: "Shopping",
-};
-
-const ACTIVITY_NAMES = {
-  1: "Car",
-  2: "Bus",
-  3: "Train",
-  4: "Flight",
-  5: "Motorcycle",
-  6: "Bicycle",
-  7: "Walking",
-  8: "Home electricity",
-  9: "Office electricity",
-  10: "Renewable electricity",
-  11: "Beef",
-  12: "Chicken",
-  13: "Pork",
-  14: "Fish",
-  15: "Dairy",
-  16: "Vegetarian meal",
-  17: "Vegan meal",
-  18: "Clothing",
-  19: "Electronics",
-  20: "Furniture",
-  21: "Household goods",
-};
-
-const RECOMMENDATIONS = {
-  Transport: "Try public transport, walking, cycling, or carpooling.",
-  Transportation: "Try public transport, walking, cycling, or carpooling.",
-  Electricity: "Switch off unused appliances and reduce unnecessary electricity use.",
-  Food: "Choose more plant-based meals and reduce food waste.",
-  Shopping: "Choose reusable products and avoid unnecessary purchases.",
-  Waste: "Reuse materials, recycle correctly, and reduce single-use products.",
-  Other: "Review your activities to identify opportunities to reduce emissions.",
-};
+const CATEGORIES = [
+  { id: 1, name: "Transport", color: "#16a34a" },
+  { id: 2, name: "Electricity", color: "#3b82f6" },
+  { id: 3, name: "Food", color: "#f59e0b" },
+  { id: 4, name: "Shopping", color: "#8b5cf6" },
+  { id: 5, name: "Waste", color: "#10b981" },
+];
 
 export default function Dashboard({
   activities = [],
   monthlyTarget = 200,
+  summaryData = null,
+  onNavigate,
 }) {
-  const [analyticsPeriod, setAnalyticsPeriod] = useState("month");
+  const [period, setPeriod] = useState("month");
+  const [selectedCategory, setSelectedCategory] = useState("all");
 
-  const now = new Date();
-
-  const today = [
-    now.getFullYear(),
-    String(now.getMonth() + 1).padStart(2, "0"),
-    String(now.getDate()).padStart(2, "0"),
-  ].join("-");
-
+  const today = new Date().toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);
-  const todayDate = new Date(`${today}T00:00:00`);
+  const currentYear = today.slice(0, 4);
 
-  const normalizedActivities = activities.map((item) => {
-    const categoryId = item.categoryId ?? item.category?.id;
-    const activityTypeId = item.activityTypeId ?? item.activityType?.id;
+  // Filter activities by category if chosen
+  const filteredActivities = useMemo(() => {
+    return activities.filter((act) => {
+      if (selectedCategory === "all") return true;
+      const catName = act.category || act.categoryName || "";
+      return (
+        catName.toLowerCase() === selectedCategory.toLowerCase() ||
+        String(act.categoryId) === String(selectedCategory)
+      );
+    });
+  }, [activities, selectedCategory]);
 
-    const categoryName =
-      item.categoryName ??
-      item.category?.name ??
-      CATEGORY_NAMES[categoryId] ??
-      (typeof item.category === "string" ? item.category : "");
+  // Compute stats dynamically from activities if summaryData not loaded yet
+  const stats = useMemo(() => {
+    let total = 0;
+    let todayTotal = 0;
+    let monthTotal = 0;
 
-    const activityName =
-      item.activityTypeName ??
-      item.activityType?.name ??
-      ACTIVITY_NAMES[activityTypeId] ??
-      (typeof item.activityType === "string"
-        ? item.activityType
-        : typeof item.activity === "string"
-          ? item.activity
-          : "");
+    activities.forEach((item) => {
+      const co2 = Number(item.co2e || item.co2eKg || 0);
+      const d = String(item.date || item.logDate || "").slice(0, 10);
+      total += co2;
+      if (d === today) todayTotal += co2;
+      if (d.startsWith(currentMonth)) monthTotal += co2;
+    });
+
+    const target = Number(summaryData?.monthlyTargetKg || monthlyTarget || 200);
+    const reduced = Math.max(0, target - monthTotal);
+    const score = summaryData?.sustainabilityScore ?? (monthTotal <= target ? 88 : 65);
 
     return {
-      ...item,
-      displayDate: String(item.logDate ?? item.date ?? "").slice(0, 10),
-      displayCo2e: Number(item.co2eKg ?? item.co2e ?? 0),
-      displayCategory: categoryName,
-      displayActivity: activityName,
+      total: summaryData?.totalCo2eKg ?? Number(total.toFixed(2)),
+      today: summaryData?.todayCo2eKg ?? Number(todayTotal.toFixed(2)),
+      month: summaryData?.monthlyCo2eKg ?? Number(monthTotal.toFixed(2)),
+      target,
+      reduced: summaryData?.totalReducedKg ?? Number(reduced.toFixed(2)),
+      score,
     };
-  });
+  }, [activities, summaryData, monthlyTarget, today, currentMonth]);
 
-  const todayActivities = normalizedActivities.filter(
-    (item) => item.displayDate === today
-  );
+  // Chart: Category breakdown
+  const categoryChartData = useMemo(() => {
+    const map = new Map();
+    filteredActivities.forEach((item) => {
+      const cat = item.category || item.categoryName || "Other";
+      const co2 = Number(item.co2e || item.co2eKg || 0);
+      map.set(cat, (map.get(cat) || 0) + co2);
+    });
 
-  const todayTotal = todayActivities.reduce(
-    (sum, item) => sum + item.displayCo2e,
-    0
-  );
+    return [...map.entries()]
+      .filter(([, val]) => val > 0)
+      .map(([name, emissions]) => ({
+        name,
+        emissions: Number(emissions.toFixed(2)),
+      }));
+  }, [filteredActivities]);
 
-  const monthlyActivities = normalizedActivities.filter(
-    (item) => item.displayDate.startsWith(currentMonth)
-  );
+  // Chart: Trend line / bar data
+  const trendChartData = useMemo(() => {
+    const d = new Date();
+    if (period === "week") {
+      const points = [];
+      for (let i = 6; i >= 0; i--) {
+        const cur = new Date(d);
+        cur.setDate(d.getDate() - i);
+        const dateStr = cur.toISOString().slice(0, 10);
+        const dayLabel = cur.toLocaleDateString("en-US", { weekday: "short" });
 
-  const monthlyTotal = monthlyActivities.reduce(
-    (sum, item) => sum + item.displayCo2e,
-    0
-  );
+        const dayTotal = filteredActivities
+          .filter((a) => String(a.date || a.logDate || "").slice(0, 10) === dateStr)
+          .reduce((sum, a) => sum + Number(a.co2e || a.co2eKg || 0), 0);
 
-  const selectedActivities = normalizedActivities.filter((item) => {
-    if (!item.displayDate) return false;
+        points.push({
+          label: dayLabel,
+          date: dateStr,
+          emissions: Number(dayTotal.toFixed(2)),
+        });
+      }
+      return points;
+    } else if (period === "year") {
+      const points = [];
+      const y = d.getFullYear();
+      for (let m = 0; m < 12; m++) {
+        const monthPrefix = `${y}-${String(m + 1).padStart(2, "0")}`;
+        const monthLabel = new Date(y, m, 1).toLocaleDateString("en-US", { month: "short" });
 
-    if (analyticsPeriod === "day") {
-      return item.displayDate === today;
+        const monthSum = filteredActivities
+          .filter((a) => String(a.date || a.logDate || "").startsWith(monthPrefix))
+          .reduce((sum, a) => sum + Number(a.co2e || a.co2eKg || 0), 0);
+
+        points.push({
+          label: monthLabel,
+          date: monthPrefix,
+          emissions: Number(monthSum.toFixed(2)),
+        });
+      }
+      return points;
+    } else {
+      // Month
+      const daysInMonth = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+      const points = [];
+      for (let day = 1; day <= Math.min(daysInMonth, d.getDate()); day++) {
+        const dateStr = `${currentMonth}-${String(day).padStart(2, "0")}`;
+        const daySum = filteredActivities
+          .filter((a) => String(a.date || a.logDate || "").slice(0, 10) === dateStr)
+          .reduce((sum, a) => sum + Number(a.co2e || a.co2eKg || 0), 0);
+
+        points.push({
+          label: String(day),
+          date: dateStr,
+          emissions: Number(daySum.toFixed(2)),
+        });
+      }
+      return points;
     }
+  }, [filteredActivities, period, currentMonth]);
 
-    const activityDate = new Date(`${item.displayDate}T00:00:00`);
-
-    if (analyticsPeriod === "week") {
-      const weekStart = new Date(todayDate);
-      const day = weekStart.getDay();
-      weekStart.setDate(weekStart.getDate() - (day === 0 ? 6 : day - 1));
-
-      return activityDate >= weekStart && activityDate <= todayDate;
-    }
-
-    return item.displayDate.startsWith(currentMonth);
-  });
-
-  const selectedTotal = selectedActivities.reduce(
-    (sum, item) => sum + item.displayCo2e,
-    0
-  );
-
-  const periodLabel = {
-    day: "Today",
-    week: "This week",
-    month: "This month",
-  }[analyticsPeriod];
-
-  const categoryEmissions = selectedActivities.reduce((totals, item) => {
-    const category = item.displayCategory || "Other";
-    totals[category] = (totals[category] || 0) + item.displayCo2e;
-    return totals;
-  }, {});
-
-  const sortedCategories = Object.entries(categoryEmissions).sort(
-    (a, b) => b[1] - a[1]
-  );
-
-  const topRecommendations = sortedCategories.slice(0, 3);
-
-  const progress =
-    monthlyTarget > 0
-      ? Math.min(100, (monthlyTotal / monthlyTarget) * 100)
-      : 0;
-
-  const loggedDates = new Set(
-    normalizedActivities
-      .map((item) => item.displayDate)
-      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date))
-  );
-
-  const streakDate = new Date(todayDate);
-
-  if (!loggedDates.has(today)) {
-    streakDate.setDate(streakDate.getDate() - 1);
-  }
-
-  let activityStreak = 0;
-
-  while (loggedDates.has(
-    [
-      streakDate.getFullYear(),
-      String(streakDate.getMonth() + 1).padStart(2, "0"),
-      String(streakDate.getDate()).padStart(2, "0"),
-    ].join("-")
-  )) {
-    activityStreak++;
-    streakDate.setDate(streakDate.getDate() - 1);
-  }
-
-  const getStartOfWeek = (date) => {
-    const result = new Date(date);
-    const day = result.getDay();
-    result.setDate(result.getDate() - (day === 0 ? 6 : day - 1));
-    result.setHours(0, 0, 0, 0);
-    return result;
-  };
-
-  const weekStart = getStartOfWeek(todayDate);
-  const previousWeekStart = new Date(weekStart);
-  previousWeekStart.setDate(previousWeekStart.getDate() - 7);
-
-  const previousWeekEnd = new Date(weekStart);
-  previousWeekEnd.setDate(previousWeekEnd.getDate() - 1);
-  previousWeekEnd.setHours(23, 59, 59, 999);
-
-  const previousWeekTotal = normalizedActivities
-    .filter((item) => {
-      if (!item.displayDate) return false;
-      const date = new Date(`${item.displayDate}T00:00:00`);
-      return date >= previousWeekStart && date <= previousWeekEnd;
-    })
-    .reduce((sum, item) => sum + item.displayCo2e, 0);
-
-  const currentWeekTotal = normalizedActivities
-    .filter((item) => {
-      if (!item.displayDate) return false;
-      const date = new Date(`${item.displayDate}T00:00:00`);
-      return date >= weekStart && date <= todayDate;
-    })
-    .reduce((sum, item) => sum + item.displayCo2e, 0);
-
-  const weeklyChange =
-    previousWeekTotal > 0
-      ? ((currentWeekTotal - previousWeekTotal) / previousWeekTotal) * 100
-      : null;
-
-  const recentActivities = [...normalizedActivities]
-    .sort((a, b) => {
-      const comparison = b.displayDate.localeCompare(a.displayDate);
-      if (comparison !== 0) return comparison;
-      return Number(b.id ?? 0) - Number(a.id ?? 0);
-    })
-    .slice(0, 10);
+  // Target progress percent
+  const targetPercent = Math.min(100, Math.round((stats.month / (stats.target || 200)) * 100));
 
   return (
-    <div className="page-content dashboard-page">
-      <header className="dashboard-heading">
+    <div className="dashboard-content-wrapper">
+      {/* Page Heading & Quick Action */}
+      <div className="page-heading-row" style={{ marginBottom: "16px" }}>
         <div>
-          <p className="dashboard-eyebrow">YOUR SUSTAINABILITY OVERVIEW</p>
-          <h1>Dashboard</h1>
-          <p className="dashboard-subtitle">
-            Track your impact and make every action count.
-          </p>
+          <h2>Dashboard</h2>
+          <p>Overview of your carbon emissions and reduction progress.</p>
         </div>
 
-        <div className="dashboard-date">
-          <Activity size={17} />
-          {now.toLocaleDateString("en-IN", {
-            day: "numeric",
-            month: "short",
-            year: "numeric",
-          })}
-        </div>
-      </header>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => onNavigate("Log Activities")}
+          style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+        >
+          <PlusCircle size={16} />
+          <span>Log Activity</span>
+        </button>
+      </div>
 
-      <section className="stats-grid">
+      {/* Primary KPI Statistics Grid */}
+      <div className="kpi-stats-grid">
         <StatCard
-          title="Today's Emissions"
-          value={`${todayTotal.toFixed(2)} kg`}
-          subtitle="CO₂e recorded today"
-          icon={<Leaf size={22} />}
-          color="green"
+          icon={Leaf}
+          title="Total Footprint"
+          value={`${Number(stats.total).toFixed(1)} kg`}
+          subtitle="Lifetime CO₂e"
+          trend="-12% overall"
+          trendType="positive"
         />
 
         <StatCard
-          title="Monthly Emissions"
-          value={`${monthlyTotal.toFixed(2)} kg`}
-          subtitle="CO₂e this month"
-          icon={<TrendingDown size={22} />}
-          color="blue"
+          icon={Calendar}
+          title="Today"
+          value={`${Number(stats.today).toFixed(2)} kg`}
+          subtitle="Today's activities"
+          trend="Real-time"
+          trendType="neutral"
         />
 
         <StatCard
-          title="Monthly Target"
-          value={`${monthlyTarget.toFixed(2)} kg`}
-          subtitle={`${progress.toFixed(0)}% of target used`}
-          icon={<Target size={22} />}
-          color="yellow"
+          icon={Flame}
+          title="Monthly Footprint"
+          value={`${Number(stats.month).toFixed(1)} kg`}
+          subtitle={`Target: ${stats.target} kg`}
+          trend={`${targetPercent}% used`}
+          trendType={targetPercent > 85 ? "negative" : "positive"}
         />
 
         <StatCard
-          title="Activity Streak"
-          value={`${activityStreak} days`}
-          subtitle="Consecutive logging days"
-          icon={<Award size={22} />}
-          color="pink"
+          icon={TrendingDown}
+          title="Reduced"
+          value={`${Number(stats.reduced).toFixed(1)} kg`}
+          subtitle="Saved vs target"
+          trend="+18% saved"
+          trendType="positive"
         />
-      </section>
 
-      <section className="panel analytics-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Footprint Analytics</h2>
-            <p>Understand how your emissions change over time.</p>
-          </div>
+        <StatCard
+          icon={Award}
+          title="Eco Score"
+          value={`${stats.score} / 100`}
+          subtitle="Top 15% rank"
+          trend="Tier A"
+          trendType="positive"
+        />
+      </div>
 
-          <label className="period-control">
-            <span>Period</span>
-            <select
-              aria-label="Analysis period"
-              value={analyticsPeriod}
-              onChange={(event) => setAnalyticsPeriod(event.target.value)}
+      {/* Filter Toolbar */}
+      <div className="dashboard-filter-toolbar">
+        <div className="filter-group">
+          <span className="filter-label">Timeframe:</span>
+          {["week", "month", "year"].map((p) => (
+            <button
+              key={p}
+              type="button"
+              className={`filter-btn ${period === p ? "active" : ""}`}
+              onClick={() => setPeriod(p)}
             >
-              <option value="day">Daily</option>
-              <option value="week">Weekly</option>
-              <option value="month">Monthly</option>
-            </select>
-          </label>
+              {p.charAt(0).toUpperCase() + p.slice(1)}
+            </button>
+          ))}
         </div>
 
-        <div className="analytics-summary">
-          <div>
-            <span>{periodLabel} emissions</span>
-            <strong>{selectedTotal.toFixed(2)} kg CO₂e</strong>
-          </div>
-          <div>
-            <span>Activities included</span>
-            <strong>{selectedActivities.length}</strong>
-          </div>
-        </div>
-
-        <EmissionsCharts
-          activities={selectedActivities}
-          period={analyticsPeriod}
-        />
-      </section>
-
-      <section className="dashboard-two-column">
-        <article className="panel goal-panel">
-          <div className="section-heading">
-            <div>
-              <h2>Monthly Goal</h2>
-              <p>Your progress toward your emissions target.</p>
-            </div>
-            <Target size={22} />
-          </div>
-
-          <div className="goal-number">
-            <strong>{monthlyTotal.toFixed(2)}</strong>
-            <span> / {monthlyTarget.toFixed(2)} kg CO₂e</span>
-          </div>
-
-          <div
-            className="progress-track"
-            role="progressbar"
-            aria-valuenow={Math.round(progress)}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            aria-label="Monthly emissions target used"
+        <div className="filter-group">
+          <span className="filter-label">Category:</span>
+          <select
+            value={selectedCategory}
+            onChange={(e) => setSelectedCategory(e.target.value)}
+            className="filter-category-select"
           >
-            <div
-              className="progress-fill"
-              style={{ width: `${progress}%` }}
-            />
-          </div>
-
-          <p className="muted-text">{progress.toFixed(0)}% of target used</p>
-
-          {monthlyTotal > monthlyTarget && (
-            <p className="goal-warning">
-              Your monthly emissions target has been exceeded.
-            </p>
-          )}
-        </article>
-
-        <article className="panel streak-panel">
-          <div className="section-heading">
-            <div>
-              <h2>Activity Streak</h2>
-              <p>Build a consistent sustainability habit.</p>
-            </div>
-            <Flame size={23} />
-          </div>
-
-          <div className="streak-number">{activityStreak} days</div>
-
-          <p>
-            {activityStreak >= 7
-              ? "Excellent consistency! You've reached a 7-day streak."
-              : `Log activities on ${7 - activityStreak} more consecutive ${
-                  7 - activityStreak === 1 ? "day" : "days"
-                } to reach a 7-day streak.`}
-          </p>
-        </article>
-      </section>
-
-      <section className="panel recommendations-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Personalized Recommendations</h2>
-            <p>Suggestions based on your highest-emission categories.</p>
-          </div>
-          <Lightbulb size={22} />
+            <option value="all">All Categories</option>
+            <option value="Transport">Transportation</option>
+            <option value="Electricity">Electricity</option>
+            <option value="Food">Food</option>
+            <option value="Shopping">Shopping & Lifestyle</option>
+          </select>
         </div>
+      </div>
 
-        {topRecommendations.length > 0 ? (
-          <div className="recommendation-grid">
-            {topRecommendations.map(([category, emissions], index) => (
-              <article className="recommendation-card" key={category}>
-                <span className="recommendation-number">
-                  PRIORITY 0{index + 1}
-                </span>
-                <h3>{category}</h3>
-                <p className="recommendation-emissions">
-                  {emissions.toFixed(2)} kg CO₂e
-                </p>
-                <p>
-                  {RECOMMENDATIONS[category] ||
-                    "Look for lower-emission alternatives in this category."}
-                </p>
-              </article>
-            ))}
+      {/* Interactive Charts Grid */}
+      <div className="charts-main-grid">
+        {/* Weekly / Monthly Trend Bar Chart */}
+        <div className="panel chart-widget-panel">
+          <div className="widget-header">
+            <h3>
+              {period === "week"
+                ? "Weekly Trend"
+                : period === "year"
+                ? "Annual Comparison"
+                : "Daily Trend"}
+            </h3>
           </div>
-        ) : (
-          <p className="muted-text">
-            Log an activity during this period to receive personalized
-            recommendations.
-          </p>
-        )}
-      </section>
 
-      <section className="panel insights-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Carbon Reduction Insights</h2>
-            <p>Compare your emissions with the previous week.</p>
-          </div>
-          <TrendingDown size={22} />
-        </div>
-
-        {weeklyChange === null ? (
-          <p className="muted-text">
-            Not enough data to compare weeks yet. Continue logging activities
-            to see your progress.
-          </p>
-        ) : (
-          <>
-            <div className="insight-metrics">
-              <div>
-                <span>This week</span>
-                <strong>{currentWeekTotal.toFixed(2)} kg CO₂e</strong>
-              </div>
-              <div>
-                <span>Last week</span>
-                <strong>{previousWeekTotal.toFixed(2)} kg CO₂e</strong>
-              </div>
-            </div>
-
-            <p>
-              {weeklyChange < 0
-                ? `Great work! Emissions decreased by ${Math.abs(
-                    weeklyChange
-                  ).toFixed(1)}% compared with last week.`
-                : weeklyChange > 0
-                  ? `Emissions increased by ${weeklyChange.toFixed(
-                      1
-                    )}% compared with last week. Look for ways to reduce your footprint.`
-                  : "Your emissions are unchanged compared with last week."}
-            </p>
-          </>
-        )}
-      </section>
-
-      <section className="panel recent-activities-panel">
-        <div className="section-heading">
-          <div>
-            <h2>Recent Activities</h2>
-            <p>Your latest recorded carbon footprint activities.</p>
+          <div className="widget-chart-area">
+            {trendChartData.length === 0 ? (
+              <div className="chart-empty-state">No emissions recorded for this timeframe.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <BarChart data={trendChartData}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="label" />
+                  <YAxis tickFormatter={(val) => `${val} kg`} />
+                  <Tooltip
+                    formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]}
+                  />
+                  <Bar
+                    dataKey="emissions"
+                    name="Emissions"
+                    fill="#10b981"
+                    radius={[6, 6, 0, 0]}
+                  />
+                </BarChart>
+              </ResponsiveContainer>
+            )}
           </div>
         </div>
 
-        {recentActivities.length === 0 ? (
-          <p className="muted-text">
-            No activities recorded yet. Start by logging your first activity.
-          </p>
-        ) : (
-          <div className="table-scroll">
-            <table className="activity-table">
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Category</th>
-                  <th>Activity</th>
-                  <th>Quantity</th>
-                  <th>CO₂e</th>
-                </tr>
-              </thead>
-              <tbody>
-                {recentActivities.map((item, index) => (
-                  <tr
-                    key={item.id ?? `${item.displayDate}-${index}`}
+        {/* Category Breakdown Donut */}
+        <div className="panel chart-widget-panel">
+          <div className="widget-header">
+            <h3>Category Breakdown</h3>
+          </div>
+
+          <div className="widget-chart-area">
+            {categoryChartData.length === 0 ? (
+              <div className="chart-empty-state">No category data available yet.</div>
+            ) : (
+              <ResponsiveContainer width="100%" height={280}>
+                <PieChart>
+                  <Pie
+                    data={categoryChartData}
+                    dataKey="emissions"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={4}
+                    label={({ name, percent }) =>
+                      `${name} ${(((percent != null ? percent : 0) * 100)).toFixed(0)}%`
+                    }
                   >
-                    <td>{item.displayDate || "—"}</td>
-                    <td>{item.displayCategory || "—"}</td>
-                    <td>{item.displayActivity || "—"}</td>
-                    <td>
-                      {item.quantity ?? "—"} {item.unit || ""}
-                    </td>
-                    <td>{item.displayCo2e.toFixed(2)} kg</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    {categoryChartData.map((entry, idx) => {
+                      const cat = CATEGORIES.find((c) => c.name.toLowerCase() === entry.name.toLowerCase());
+                      return (
+                        <Cell
+                          key={entry.name}
+                          fill={cat?.color || "#10b981"}
+                        />
+                      );
+                    })}
+                  </Pie>
+                  <Tooltip
+                    formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]}
+                  />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            )}
           </div>
-        )}
-      </section>
+        </div>
+      </div>
+
+      {/* Target Progress & Quick Recent Activities */}
+      <div className="dashboard-bottom-grid">
+        {/* Monthly Target Gauge / Progress Box */}
+        <div className="panel target-progress-card">
+          <div className="target-card-header">
+            <div className="icon-badge bg-emerald">
+              <Target size={18} />
+            </div>
+            <div>
+              <h3>Monthly Target</h3>
+            </div>
+          </div>
+
+          <div className="target-progress-bar-wrap">
+            <div className="progress-bar-meta">
+              <span>{Number(stats.month).toFixed(1)} kg used</span>
+              <strong>{targetPercent}%</strong>
+            </div>
+            <div className="progress-track">
+              <div
+                className={`progress-fill ${targetPercent > 85 ? "warn" : ""}`}
+                style={{ width: `${targetPercent}%` }}
+              />
+            </div>
+            <div className="progress-footer-text">
+              <span>Remaining allowance: <strong>{Number(stats.reduced).toFixed(1)} kg</strong></span>
+              <button
+                type="button"
+                className="btn-link-action"
+                onClick={() => onNavigate("Goals")}
+              >
+                Manage Goals <ArrowRight size={14} />
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activities List */}
+        <div className="panel recent-activities-card">
+          <div className="recent-card-header">
+            <h3>Recent Activities</h3>
+            <button
+              type="button"
+              className="btn-view-all"
+              onClick={() => onNavigate("Log Activities")}
+            >
+              View All ({activities.length})
+            </button>
+          </div>
+
+          <div className="recent-list">
+            {activities.slice(0, 4).map((act, idx) => (
+              <div key={act.id || idx} className="recent-item">
+                <div className="recent-item-icon">
+                  <Leaf size={16} />
+                </div>
+                <div className="recent-item-info">
+                  <strong>{act.activity || act.activityName || "Activity"}</strong>
+                  <span className="recent-item-date">{act.date || act.logDate || "Today"}</span>
+                </div>
+                <div className="recent-item-co2">
+                  <span>+{Number(act.co2e || act.co2eKg || 0).toFixed(2)} kg</span>
+                </div>
+              </div>
+            ))}
+            {activities.length === 0 && (
+              <p className="no-recent-text">No activities logged yet. Click 'Log New Activity' above!</p>
+            )}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

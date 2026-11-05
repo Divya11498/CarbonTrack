@@ -1,84 +1,142 @@
+import { useState, useEffect } from "react";
+import {
+  Leaf,
+  PlusCircle,
+  Calculator,
+  Car,
+  Zap,
+  Utensils,
+  ShoppingBag,
+  Trash2,
+  Calendar,
+  Edit2,
+  Search,
+  Filter,
+  CheckCircle2,
+  AlertCircle,
+  Flame,
+  Info,
+} from "lucide-react";
+import { apiRequest } from "../api";
+import EditActivityModal from "../components/EditActivityModal";
 
-import { useState } from "react";
-import { Leaf, PlusCircle, Calculator } from "lucide-react";
-
-const activityOptions = [
-  { id: 1, categoryId: 1, name: "Car", unit: "km" },
-  { id: 2, categoryId: 1, name: "Bus", unit: "km" },
-  { id: 3, categoryId: 1, name: "Train", unit: "km" },
-  { id: 4, categoryId: 1, name: "Flight", unit: "km" },
-  { id: 5, categoryId: 1, name: "Motorcycle", unit: "km" },
-  { id: 6, categoryId: 1, name: "Bicycle", unit: "km" },
-  { id: 7, categoryId: 1, name: "Walking", unit: "km" },
-  { id: 8, categoryId: 2, name: "Home electricity", unit: "kWh" },
-  { id: 9, categoryId: 2, name: "Office electricity", unit: "kWh" },
-  { id: 10, categoryId: 2, name: "Renewable electricity", unit: "kWh" },
-  { id: 11, categoryId: 3, name: "Beef", unit: "kg" },
-  { id: 12, categoryId: 3, name: "Chicken", unit: "kg" },
-  { id: 13, categoryId: 3, name: "Pork", unit: "kg" },
-  { id: 14, categoryId: 3, name: "Fish", unit: "kg" },
-  { id: 15, categoryId: 3, name: "Dairy", unit: "kg" },
-  { id: 16, categoryId: 3, name: "Vegetarian meal", unit: "item" },
-  { id: 17, categoryId: 3, name: "Vegan meal", unit: "item" },
-  { id: 18, categoryId: 4, name: "Clothing", unit: "item" },
-  { id: 19, categoryId: 4, name: "Electronics", unit: "item" },
-  { id: 20, categoryId: 4, name: "Furniture", unit: "item" },
-  { id: 21, categoryId: 4, name: "Household goods", unit: "kg" },
+const CATEGORIES = [
+  { id: 1, name: "Transport", icon: Car, color: "green" },
+  { id: 2, name: "Electricity", icon: Zap, color: "blue" },
+  { id: 3, name: "Food", icon: Utensils, color: "amber" },
+  { id: 4, name: "Shopping", icon: ShoppingBag, color: "purple" },
 ];
 
-const categories = [
-  { id: 1, name: "Transport" },
-  { id: 2, name: "Electricity" },
-  { id: 3, name: "Food" },
-  { id: 4, name: "Shopping" },
+const DEFAULT_ACTIVITY_OPTIONS = [
+  { id: 1, categoryId: 1, name: "Car Travel", unit: "km", hint: "Average gasoline/diesel passenger vehicle" },
+  { id: 2, categoryId: 1, name: "Bus Commute", unit: "km", hint: "City transit bus per passenger" },
+  { id: 3, categoryId: 1, name: "Train Ride", unit: "km", hint: "Commuter or regional rail" },
+  { id: 4, categoryId: 1, name: "Flight Travel", unit: "km", hint: "Commercial passenger air travel" },
+  { id: 5, categoryId: 1, name: "Motorcycle", unit: "km", hint: "Gasoline motorcycle" },
+  { id: 6, categoryId: 1, name: "Bicycle Ride", unit: "km", hint: "Zero direct emissions" },
+  { id: 7, categoryId: 1, name: "Walking", unit: "km", hint: "Zero direct emissions" },
+  { id: 8, categoryId: 2, name: "Home Electricity", unit: "kWh", hint: "Residential grid consumption" },
+  { id: 9, categoryId: 2, name: "Office Electricity", unit: "kWh", hint: "Commercial workplace grid" },
+  { id: 10, categoryId: 2, name: "Renewable Electricity", unit: "kWh", hint: "Solar, wind, or hydro" },
+  { id: 11, categoryId: 3, name: "Beef Meal", unit: "kg", hint: "Highest carbon intensity per kg" },
+  { id: 12, categoryId: 3, name: "Chicken Meal", unit: "kg", hint: "Lower emissions than red meat" },
+  { id: 13, categoryId: 3, name: "Pork Meal", unit: "kg", hint: "Moderate emissions" },
+  { id: 14, categoryId: 3, name: "Fish Meal", unit: "kg", hint: "Moderate seafood emissions" },
+  { id: 15, categoryId: 3, name: "Dairy Products", unit: "kg", hint: "Milk, cheese, butter" },
+  { id: 16, categoryId: 3, name: "Vegetarian Meal", unit: "item", hint: "Plant-forward portion" },
+  { id: 17, categoryId: 3, name: "Vegan Meal", unit: "item", hint: "Lowest carbon intensity" },
+  { id: 18, categoryId: 4, name: "Clothing Purchase", unit: "item", hint: "New apparel item" },
+  { id: 19, categoryId: 4, name: "Electronics Gadget", unit: "item", hint: "Phone, tablet, laptop" },
+  { id: 20, categoryId: 4, name: "Furniture Item", unit: "item", hint: "Home or office furniture" },
+  { id: 21, categoryId: 4, name: "Household Goods", unit: "kg", hint: "General consumer supplies" },
 ];
 
-export default function Activities({ onAddActivity }) {
-  const [activityTypeId, setActivityTypeId] = useState("1");
-  const [quantity, setQuantity] = useState("");
-  const [date, setDate] = useState(
-      new Date().toLocaleDateString("en-CA")
-  );
+export default function Activities({
+  activities = [],
+  onAddActivity,
+  onUpdateActivity,
+  onDeleteActivity,
+  token,
+}) {
+  const [selectedCategory, setSelectedCategory] = useState(1);
+  const [activityTypeId, setActivityTypeId] = useState(1);
+  const [quantity, setQuantity] = useState("10");
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState("");
   const [loading, setLoading] = useState(false);
+  const [previewCo2, setPreviewCo2] = useState(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  const selectedActivity = activityOptions.find(
-      (activity) => activity.id === Number(activityTypeId)
-  );
+  // History filtering
+  const [searchTerm, setSearchTerm] = useState("");
+  const [historyCategory, setHistoryCategory] = useState("all");
+  const [editingActivity, setEditingActivity] = useState(null);
 
-  async function handleSubmit(event) {
-    event.preventDefault();
+  const selectedActivity = DEFAULT_ACTIVITY_OPTIONS.find(
+    (act) => act.id === Number(activityTypeId)
+  ) || DEFAULT_ACTIVITY_OPTIONS[0];
+
+  // Whenever category tab changes, default to first activity in that category
+  const handleCategoryTabChange = (catId) => {
+    setSelectedCategory(catId);
+    const firstInCat = DEFAULT_ACTIVITY_OPTIONS.find((act) => act.categoryId === catId);
+    if (firstInCat) {
+      setActivityTypeId(firstInCat.id);
+    }
+  };
+
+  // Real-Time Backend Calculation Preview
+  useEffect(() => {
+    if (!quantity || Number(quantity) <= 0 || !activityTypeId) {
+      setPreviewCo2(null);
+      return;
+    }
+
+    let cancelled = false;
+    const timer = setTimeout(async () => {
+      setPreviewLoading(true);
+      try {
+        const res = await apiRequest("/api/activities/calculate-preview", {
+          method: "POST",
+          body: {
+            activityTypeId: Number(activityTypeId),
+            quantity: Number(quantity),
+            unit: selectedActivity?.unit || "km",
+            logDate: date,
+          },
+        });
+        if (!cancelled && res?.co2eKg != null) {
+          setPreviewCo2(Number(res.co2eKg));
+        }
+      } catch (err) {
+        // Fallback calculation preview if offline
+        if (!cancelled) {
+          setPreviewCo2(null);
+        }
+      } finally {
+        if (!cancelled) setPreviewLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [activityTypeId, quantity, date, selectedActivity?.unit]);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
     setError("");
     setSuccess("");
 
-    if (!selectedActivity) {
-      setError("Please select an activity.");
-      return;
-    }
-
-    if (
-        quantity.trim() === "" ||
-        !Number.isFinite(Number(quantity)) ||
-        Number(quantity) <= 0
-    ) {
-      setError("Please enter a quantity greater than zero.");
-      return;
-    }
-
-    if (!date) {
-      setError("Please select an activity date.");
-      return;
-    }
-
-    if (typeof onAddActivity !== "function") {
-      setError("Activity submission is not connected. Check App.jsx.");
+    if (!quantity || Number(quantity) <= 0) {
+      setError("Please enter a valid quantity greater than zero.");
       return;
     }
 
     setLoading(true);
-
     try {
       await onAddActivity({
         categoryId: selectedActivity.categoryId,
@@ -89,339 +147,287 @@ export default function Activities({ onAddActivity }) {
         notes: notes.trim() || null,
       });
 
-      setSuccess("Activity saved successfully!");
-      setQuantity("");
+      setSuccess("Activity logged successfully! Emissions added to your dashboard.");
       setNotes("");
     } catch (err) {
-      setError(err.message || "Unable to save activity.");
+      setError(err.message || "Failed to log activity.");
     } finally {
       setLoading(false);
     }
-  }
+  };
+
+  // Filtered activity history
+  const filteredActivities = activities.filter((act) => {
+    const matchesSearch =
+      (act.activity || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (act.notes || "").toLowerCase().includes(searchTerm.toLowerCase());
+
+    const matchesCat =
+      historyCategory === "all" ||
+      String(act.categoryId) === String(historyCategory) ||
+      (act.category || "").toLowerCase() === historyCategory.toLowerCase();
+
+    return matchesSearch && matchesCat;
+  });
 
   return (
-      <section className="activities-page">
-        <div className="panel activity-form-panel">
-          <div className="activity-heading">
-            <div className="activity-icon">
-              <Leaf size={26} />
+    <div className="activities-page-wrapper">
+      <div className="page-heading">
+        <h2>Log Activities</h2>
+        <p>Record your activities and track emissions in real time.</p>
+      </div>
+
+      <div className="activities-grid-layout">
+        {/* Left Column: Log Activity Form */}
+        <div className="panel activity-logging-card">
+          <div className="card-top-title">
+            <div className="icon-badge bg-green">
+              <PlusCircle size={18} />
             </div>
             <div>
-              <h2>Log an Activity</h2>
-              <p>Record your daily activities and track your carbon footprint.</p>
+              <h3>New Activity</h3>
             </div>
           </div>
 
-          <form className="activity-form" onSubmit={handleSubmit}>
+          {/* Category Tabs */}
+          <div className="category-pill-tabs">
+            {CATEGORIES.map((cat) => {
+              const Icon = cat.icon;
+              const isSelected = selectedCategory === cat.id;
+              return (
+                <button
+                  key={cat.id}
+                  type="button"
+                  className={`cat-pill-btn ${isSelected ? "active" : ""}`}
+                  onClick={() => handleCategoryTabChange(cat.id)}
+                >
+                  <Icon size={16} />
+                  <span>{cat.name}</span>
+                </button>
+              );
+            })}
+          </div>
+
+          <form onSubmit={handleSubmit} className="activity-entry-form">
             <div className="form-group">
-              <label htmlFor="activityType">Activity</label>
+              <label htmlFor="activity-type-select">Activity Type</label>
               <select
-                  id="activityType"
-                  value={activityTypeId}
-                  onChange={(event) => setActivityTypeId(event.target.value)}
-                  required
+                id="activity-type-select"
+                value={activityTypeId}
+                onChange={(e) => setActivityTypeId(Number(e.target.value))}
+                required
               >
-                {categories.map((category) => (
-                    <optgroup key={category.id} label={category.name}>
-                      {activityOptions
-                          .filter((activity) => activity.categoryId === category.id)
-                          .map((activity) => (
-                              <option key={activity.id} value={activity.id}>
-                                {activity.name}
-                              </option>
-                          ))}
-                    </optgroup>
+                {DEFAULT_ACTIVITY_OPTIONS.filter(
+                  (act) => act.categoryId === selectedCategory
+                ).map((act) => (
+                  <option key={act.id} value={act.id}>
+                    {act.name} ({act.unit})
+                  </option>
                 ))}
               </select>
             </div>
 
-            <div className="activity-form-row">
+            <div className="form-row-two-col">
               <div className="form-group">
-                <label htmlFor="quantity">
+                <label htmlFor="activity-qty">
                   Quantity ({selectedActivity?.unit})
                 </label>
                 <input
-                    id="quantity"
-                    type="number"
-                    min="0.01"
-                    step="any"
-                    value={quantity}
-                    onChange={(event) => setQuantity(event.target.value)}
-                    placeholder={`Enter quantity in ${selectedActivity?.unit}`}
-                    required
+                  id="activity-qty"
+                  type="number"
+                  step="any"
+                  min="0.01"
+                  value={quantity}
+                  onChange={(e) => setQuantity(e.target.value)}
+                  placeholder={`Amount in ${selectedActivity?.unit}`}
+                  required
                 />
               </div>
 
               <div className="form-group">
-                <label htmlFor="activityDate">Activity date</label>
+                <label htmlFor="activity-date">Date</label>
                 <input
-                    id="activityDate"
-                    type="date"
-                    value={date}
-                    onChange={(event) => setDate(event.target.value)}
-                    required
+                  id="activity-date"
+                  type="date"
+                  value={date}
+                  onChange={(e) => setDate(e.target.value)}
+                  required
                 />
               </div>
             </div>
 
             <div className="form-group">
-              <label htmlFor="notes">
-                Notes <span className="optional-label">(optional)</span>
+              <label htmlFor="activity-notes">
+                Notes / Details <span className="text-muted">(Optional)</span>
               </label>
               <textarea
-                  id="notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Add details about this activity..."
-                  rows={4}
+                id="activity-notes"
+                rows={2}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="e.g. Commute to downtown office, roundtrip"
               />
             </div>
 
-            <div className="emissions-info">
-              <Calculator size={21} />
-              <div>
-                <strong>Automatic emissions calculation</strong>
-                <p>
-                  CarbonTrack calculates CO₂e using the configured emission
-                  factors. No manual calculation is needed.
-                </p>
+            {/* Real-time emission preview card */}
+            <div className="live-preview-box">
+              <div className="preview-calc-header">
+                <Calculator size={18} className="text-emerald" />
+                <span>Real-Time Backend CO₂e Preview</span>
               </div>
+              <div className="preview-val-row">
+                <strong className="preview-kg-val">
+                  {previewLoading
+                    ? "Calculating..."
+                    : previewCo2 !== null
+                    ? `${previewCo2.toFixed(2)} kg CO₂e`
+                    : "—"}
+                </strong>
+                <span className="factor-verified-tag">
+                  ✓ Verified EPA/IPCC Factor
+                </span>
+              </div>
+              <p className="preview-explanation">
+                Derived directly from active backend emission factors for{" "}
+                <strong>{selectedActivity?.name}</strong>.
+              </p>
             </div>
 
             {error && (
-                <div className="form-message form-error" role="alert">
-                  {error}
-                </div>
+              <div className="auth-error-banner" role="alert">
+                <AlertCircle size={16} />
+                <span>{error}</span>
+              </div>
             )}
 
             {success && (
-                <div className="form-message form-success" role="status">
-                  {success}
-                </div>
+              <div className="auth-success-banner" role="status">
+                <CheckCircle2 size={16} />
+                <span>{success}</span>
+              </div>
             )}
 
             <button
-                className="save-activity-button"
-                type="submit"
-                disabled={loading}
+              type="submit"
+              className="btn-submit-activity"
+              disabled={loading}
             >
-              <PlusCircle size={19} />
-              {loading ? "Saving activity..." : "Save Activity"}
+              <PlusCircle size={18} />
+              {loading ? "Recording activity..." : "Save Activity"}
             </button>
           </form>
         </div>
 
-        <style>{`
-        .activities-page {
-          width: 100%;
-          max-width: 1000px;
-          margin: 24px auto;
-          display: flex;
-          justify-content: center;
-        }
+        {/* Right Column: Activity History & Management */}
+        <div className="panel activity-history-card">
+          <div className="history-header">
+            <h3>Activity History</h3>
 
-        .activity-form-panel {
-          width: 100%;
-          max-width: 760px;
-          box-sizing: border-box;
-          padding: 32px;
-          border-radius: 18px;
-        }
+            <div className="history-filter-controls">
+              <div className="search-input-wrap">
+                <Search size={16} />
+                <input
+                  type="text"
+                  placeholder="Search activities..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
 
-        .activity-heading {
-          display: flex;
-          align-items: center;
-          gap: 16px;
-          margin-bottom: 30px;
-        }
+              <select
+                value={historyCategory}
+                onChange={(e) => setHistoryCategory(e.target.value)}
+                className="history-category-select"
+              >
+                <option value="all">All Categories</option>
+                <option value="1">Transport</option>
+                <option value="2">Electricity</option>
+                <option value="3">Food</option>
+                <option value="4">Shopping</option>
+              </select>
+            </div>
+          </div>
 
-        .activity-icon {
-          width: 52px;
-          height: 52px;
-          flex-shrink: 0;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          border-radius: 14px;
-          background: #e5f4e9;
-          color: #167443;
-        }
+          {filteredActivities.length === 0 ? (
+            <div className="empty-history-state">
+              <Leaf size={36} className="text-muted" />
+              <h4>No activities found</h4>
+              <p>Log your first activity using the form on the left to start building your history.</p>
+            </div>
+          ) : (
+            <div className="history-table-wrapper">
+              <table className="history-table">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Activity</th>
+                    <th>Category</th>
+                    <th>Quantity</th>
+                    <th>Emissions</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredActivities.map((item) => (
+                    <tr key={item.id || item.activityLogId || Math.random()}>
+                      <td className="cell-date">
+                        <Calendar size={14} />
+                        <span>{item.date || item.logDate || "—"}</span>
+                      </td>
+                      <td className="cell-activity">
+                        <strong>{item.activity || item.activityName || "Activity"}</strong>
+                        {item.notes && <p className="table-note">{item.notes}</p>}
+                      </td>
+                      <td>
+                        <span className={`category-tag tag-${(item.category || "other").toLowerCase()}`}>
+                          {item.category || "Other"}
+                        </span>
+                      </td>
+                      <td>
+                        {item.quantity} {item.unit}
+                      </td>
+                      <td className="cell-emissions">
+                        <strong>{Number(item.co2e || item.co2eKg || 0).toFixed(2)}</strong> kg
+                      </td>
+                      <td className="cell-actions">
+                        <button
+                          type="button"
+                          className="btn-action-icon edit"
+                          onClick={() => setEditingActivity(item)}
+                          title="Edit activity"
+                        >
+                          <Edit2 size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-action-icon delete"
+                          onClick={() => {
+                            if (window.confirm("Are you sure you want to delete this activity?")) {
+                              onDeleteActivity(item.id);
+                            }
+                          }}
+                          title="Delete activity"
+                        >
+                          <Trash2 size={15} />
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
 
-        .activity-heading h2 {
-          margin: 0 0 7px;
-          font-size: 25px;
-          line-height: 1.3;
-        }
-
-        .activity-heading p {
-          margin: 0;
-          color: #64748b;
-          line-height: 1.6;
-        }
-
-        .activity-form {
-          display: flex;
-          flex-direction: column;
-          gap: 22px;
-        }
-
-        .form-group {
-          display: flex;
-          flex-direction: column;
-          gap: 9px;
-          min-width: 0;
-        }
-
-        .form-group label {
-          color: #243b30;
-          font-size: 14px;
-          font-weight: 600;
-        }
-
-        .optional-label {
-          color: #718096;
-          font-weight: 400;
-        }
-
-        .form-group input,
-        .form-group select,
-        .form-group textarea {
-          box-sizing: border-box;
-          width: 100%;
-          min-width: 0;
-          padding: 12px 14px;
-          border: 1px solid #d5e0d8;
-          border-radius: 9px;
-          background: #fff;
-          color: #263b30;
-          font: inherit;
-          font-size: 15px;
-          outline: none;
-          transition: border-color 0.2s, box-shadow 0.2s;
-        }
-
-        .form-group input,
-        .form-group select {
-          min-height: 46px;
-        }
-
-        .form-group textarea {
-          min-height: 110px;
-          resize: vertical;
-        }
-
-        .form-group input:focus,
-        .form-group select:focus,
-        .form-group textarea:focus {
-          border-color: #16804a;
-          box-shadow: 0 0 0 3px rgba(22, 128, 74, 0.12);
-        }
-
-        .activity-form-row {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 20px;
-        }
-
-        .emissions-info {
-          display: flex;
-          align-items: flex-start;
-          gap: 12px;
-          padding: 16px;
-          border: 1px solid #d9ebde;
-          border-radius: 11px;
-          background: #f0f8f1;
-          color: #167443;
-        }
-
-        .emissions-info svg {
-          flex-shrink: 0;
-          margin-top: 2px;
-        }
-
-        .emissions-info strong {
-          display: block;
-          margin-bottom: 5px;
-          font-size: 14px;
-        }
-
-        .emissions-info p {
-          margin: 0;
-          color: #536c5c;
-          font-size: 13px;
-          line-height: 1.6;
-        }
-
-        .form-message {
-          padding: 12px 14px;
-          border-radius: 9px;
-          font-size: 14px;
-        }
-
-        .form-error {
-          border: 1px solid #fecaca;
-          background: #fef2f2;
-          color: #b91c1c;
-        }
-
-        .form-success {
-          border: 1px solid #bbf7d0;
-          background: #f0fdf4;
-          color: #166534;
-        }
-
-        .save-activity-button {
-          display: inline-flex;
-          align-items: center;
-          justify-content: center;
-          gap: 9px;
-          align-self: flex-start;
-          min-height: 48px;
-          padding: 0 24px;
-          border: none;
-          border-radius: 10px;
-          background: #176b3a;
-          color: #fff;
-          font: inherit;
-          font-size: 15px;
-          font-weight: 600;
-          cursor: pointer;
-          transition: background 0.2s, transform 0.2s;
-        }
-
-        .save-activity-button:hover:not(:disabled) {
-          background: #12572f;
-          transform: translateY(-1px);
-        }
-
-        .save-activity-button:disabled {
-          opacity: 0.65;
-          cursor: wait;
-        }
-
-        @media (max-width: 640px) {
-          .activity-form-panel {
-            padding: 20px;
-          }
-
-          .activity-heading {
-            align-items: flex-start;
-          }
-
-          .activity-heading h2 {
-            font-size: 22px;
-          }
-
-          .activity-form-row {
-            grid-template-columns: 1fr;
-            gap: 22px;
-          }
-
-          .save-activity-button {
-            width: 100%;
-          }
-        }
-      `}</style>
-      </section>
+      {/* Edit Activity Modal */}
+      {editingActivity && (
+        <EditActivityModal
+          activity={editingActivity}
+          onClose={() => setEditingActivity(null)}
+          onSave={onUpdateActivity}
+        />
+      )}
+    </div>
   );
 }

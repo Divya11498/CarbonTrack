@@ -8,7 +8,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.crypto.SecretKey;
+import java.nio.charset.StandardCharsets;
 import java.util.Date;
+import java.util.HexFormat;
 
 @Service
 public class JwtService {
@@ -20,7 +22,29 @@ public class JwtService {
             @Value("${app.jwt.secret}") String secret,
             @Value("${app.jwt.expiration-ms:3600000}") long expirationMs) {
 
-        byte[] keyBytes = Decoders.BASE64.decode(secret);
+        String trimmed = (secret != null) ? secret.trim() : "";
+        byte[] keyBytes;
+
+        try {
+            if (trimmed.length() == 64 && trimmed.matches("^[0-9a-fA-F]+$")) {
+                keyBytes = HexFormat.of().parseHex(trimmed);
+            } else {
+                keyBytes = Decoders.BASE64.decode(trimmed);
+            }
+        } catch (Exception e) {
+            try {
+                keyBytes = Decoders.BASE64URL.decode(trimmed);
+            } catch (Exception e2) {
+                keyBytes = trimmed.getBytes(StandardCharsets.UTF_8);
+            }
+        }
+
+        if (keyBytes.length < 32) {
+            byte[] padded = new byte[32];
+            System.arraycopy(keyBytes, 0, padded, 0, Math.min(keyBytes.length, 32));
+            keyBytes = padded;
+        }
+
         this.signingKey = Keys.hmacShaKeyFor(keyBytes);
         this.expirationMs = expirationMs;
     }
@@ -41,12 +65,13 @@ public class JwtService {
         return extractAllClaims(token).getSubject();
     }
 
-    public boolean isTokenValid(String token, String expectedEmail) {
-        Claims claims = extractAllClaims(token);
+    public boolean isTokenValid(String token, String email) {
+        String tokenEmail = extractEmail(token);
+        return tokenEmail.equals(email) && !isTokenExpired(token);
+    }
 
-        return expectedEmail.equals(claims.getSubject())
-                && claims.getExpiration() != null
-                && claims.getExpiration().after(new Date());
+    private boolean isTokenExpired(String token) {
+        return extractAllClaims(token).getExpiration().before(new Date());
     }
 
     private Claims extractAllClaims(String token) {

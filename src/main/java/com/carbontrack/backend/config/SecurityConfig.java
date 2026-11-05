@@ -1,4 +1,3 @@
-
 package com.carbontrack.backend.config;
 
 import com.carbontrack.backend.auth.JwtAuthenticationFilter;
@@ -51,26 +50,25 @@ public class SecurityConfig {
         return configuration.getAuthenticationManager();
     }
 
-    // Allow requests from the local React/Vite development server
+    // Allow requests from React/Vite development server
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-
         configuration.setAllowedOrigins(
                 List.of(
                         "http://localhost:5173",
-                        "http://localhost:5174"
+                        "http://localhost:5174",
+                        "http://localhost:3000"
                 )
         );
-
 
         configuration.setAllowedMethods(
                 List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS")
         );
 
         configuration.setAllowedHeaders(
-                List.of("Authorization", "Content-Type")
+                List.of("Authorization", "Content-Type", "Accept", "Origin", "X-Requested-With")
         );
 
         UrlBasedCorsConfigurationSource source =
@@ -110,9 +108,16 @@ public class SecurityConfig {
                 )
 
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/", "/api/health", "/error").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
-                        .requestMatchers("/api/activities", "/api/activities/**")
-                        .authenticated()
+                        .requestMatchers("/api/activities", "/api/activities/**").authenticated()
+                        .requestMatchers("/api/users/**").authenticated()
+                        .requestMatchers("/api/analytics/**").authenticated()
+                        .requestMatchers("/api/goals/**").authenticated()
+                        .requestMatchers("/api/recommendations/**").authenticated()
+                        .requestMatchers("/api/badges/**").authenticated()
+                        .requestMatchers("/api/leaderboard/**").authenticated()
+                        .requestMatchers("/api/organizations/**").authenticated()
                         .anyRequest().authenticated()
                 )
 

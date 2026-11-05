@@ -1,61 +1,66 @@
-BEGIN;
 
-CREATE TABLE IF NOT EXISTS organisations (
-                                             id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                                             name VARCHAR(150) NOT NULL,
-                                             description TEXT,
-                                             admin_user_id BIGINT REFERENCES users(id),
-                                             is_active BOOLEAN NOT NULL DEFAULT TRUE,
-                                             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                                             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+-- V2: Add supporting indexes for CarbonTrack core tables.
+-- V1 already creates the complete schema, so no duplicate tables or columns are needed.
 
-ALTER TABLE users
-    ADD COLUMN IF NOT EXISTS org_id UUID,
-    ADD COLUMN IF NOT EXISTS first_name VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS last_name VARCHAR(100),
-    ADD COLUMN IF NOT EXISTS display_name VARCHAR(150),
-    ADD COLUMN IF NOT EXISTS timezone VARCHAR(64) NOT NULL DEFAULT 'UTC',
-    ADD COLUMN IF NOT EXISTS preferred_unit VARCHAR(20) NOT NULL DEFAULT 'kgCO2e';
+CREATE INDEX IF NOT EXISTS idx_users_email
+    ON users(email);
 
-ALTER TABLE users
-    ADD CONSTRAINT fk_users_organisation
-        FOREIGN KEY (org_id) REFERENCES organisations(id);
+CREATE INDEX IF NOT EXISTS idx_users_is_active
+    ON users(is_active);
 
-CREATE TABLE IF NOT EXISTS recommendations (
-                                               id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                                               user_id BIGINT NOT NULL REFERENCES users(id),
-                                               activity_type_id UUID REFERENCES activity_types(id),
-                                               title VARCHAR(150) NOT NULL,
-                                               description TEXT,
-                                               potential_reduction_kg NUMERIC(12,4),
-                                               is_read BOOLEAN NOT NULL DEFAULT FALSE,
-                                               created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-);
+CREATE INDEX IF NOT EXISTS idx_org_members_user
+    ON organization_members(user_id);
 
-ALTER TABLE activity_logs
-    ADD COLUMN IF NOT EXISTS quantity NUMERIC(12,4),
-    ADD COLUMN IF NOT EXISTS unit VARCHAR(20),
-    ADD COLUMN IF NOT EXISTS emission_factor_id UUID,
-    ADD COLUMN IF NOT EXISTS org_id UUID,
-    ADD COLUMN IF NOT EXISTS source VARCHAR(40) NOT NULL DEFAULT 'MANUAL';
+CREATE INDEX IF NOT EXISTS idx_org_members_org
+    ON organization_members(organization_id);
 
-ALTER TABLE activity_logs
-    ADD CONSTRAINT fk_activity_logs_emission_factor
-        FOREIGN KEY (emission_factor_id) REFERENCES emission_factors(id);
+CREATE INDEX IF NOT EXISTS idx_user_profiles_user
+    ON user_profiles(user_id);
 
-ALTER TABLE activity_logs
-    ADD CONSTRAINT fk_activity_logs_organisation
-        FOREIGN KEY (org_id) REFERENCES organisations(id);
+CREATE INDEX IF NOT EXISTS idx_activity_types_category
+    ON activity_types(category_id);
 
-ALTER TABLE emission_factors
-    ADD COLUMN IF NOT EXISTS effective_date DATE,
-    ADD COLUMN IF NOT EXISTS source_version VARCHAR(50),
-    ADD COLUMN IF NOT EXISTS region VARCHAR(50) NOT NULL DEFAULT 'GLOBAL';
+CREATE INDEX IF NOT EXISTS idx_activity_types_active
+    ON activity_types(is_active);
 
-ALTER TABLE user_goals
-    ADD COLUMN IF NOT EXISTS target_reduction_pct NUMERIC(5,2),
-    ADD COLUMN IF NOT EXISTS period_days INTEGER,
-    ADD COLUMN IF NOT EXISTS status VARCHAR(20) NOT NULL DEFAULT 'ACTIVE';
+CREATE INDEX IF NOT EXISTS idx_emission_factors_activity
+    ON emission_factors(activity_type_id);
 
-COMMIT;
+CREATE INDEX IF NOT EXISTS idx_emission_factors_active
+    ON emission_factors(is_active);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_date
+    ON activity_logs(user_id, log_date);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_user_category
+    ON activity_logs(user_id, category_id, log_date);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_activity_type
+    ON activity_logs(activity_type_id);
+
+CREATE INDEX IF NOT EXISTS idx_activity_logs_org
+    ON activity_logs(organization_id);
+
+CREATE INDEX IF NOT EXISTS idx_goals_user_status
+    ON goals(user_id, status);
+
+CREATE INDEX IF NOT EXISTS idx_goals_org
+    ON goals(organization_id);
+
+CREATE INDEX IF NOT EXISTS idx_goal_progress_goal
+    ON goal_progress(goal_id);
+
+CREATE INDEX IF NOT EXISTS idx_user_badges_user
+    ON user_badges(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_recommendations_user
+    ON recommendations(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_feedback_user
+    ON feedback(user_id);
+
+CREATE INDEX IF NOT EXISTS idx_leaderboard_period
+    ON leaderboard(organization_id, period_end);
+
+CREATE INDEX IF NOT EXISTS idx_leaderboard_user
+    ON leaderboard(user_id);

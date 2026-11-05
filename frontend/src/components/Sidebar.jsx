@@ -1,6 +1,8 @@
+import { useState } from "react";
 import {
   LayoutDashboard,
   ClipboardList,
+  BarChart3,
   Target,
   Trophy,
   Building2,
@@ -9,82 +11,170 @@ import {
   LogOut,
   Lightbulb,
   Award,
+  Settings,
+  ChevronLeft,
+  ChevronRight,
+  X,
 } from "lucide-react";
 
 const menuItems = [
-  { label: "Dashboard", icon: LayoutDashboard },
-  { label: "Log Activities", icon: ClipboardList },
-  { label: "Goals", icon: Target },
-  { label: "Recommendations", icon: Lightbulb },
-  { label: "Achievements", icon: Award },
-  { label: "Leaderboard", icon: Trophy },
-  { label: "Organisation", icon: Building2 },
+  { label: "Dashboard", id: "Dashboard", icon: LayoutDashboard },
+  { label: "Log Activities", id: "Log Activities", icon: ClipboardList },
+  { label: "Analytics", id: "Analytics", icon: BarChart3 },
+  { label: "Goals", id: "Goals", icon: Target },
+  { label: "Recommendations", id: "Recommendations", icon: Lightbulb },
+  { label: "Leaderboard", id: "Leaderboard", icon: Trophy },
+  { label: "Achievements", id: "Achievements", icon: Award },
+  { label: "Organisation", id: "Organisation", icon: Building2 },
+];
+
+const secondaryItems = [
+  { label: "Profile", id: "Profile", icon: UserRound },
+  { label: "Settings", id: "Settings", icon: Settings },
 ];
 
 export default function Sidebar({
-                                  activePage,
-                                  onNavigate,
-                                  userName,
-                                  onLogout,
-                                }) {
+  activePage,
+  onNavigate,
+  userName = "User",
+  avatarUrl = "",
+  onLogout,
+  mobileOpen = false,
+  onCloseMobile,
+}) {
+  const [collapsed, setCollapsed] = useState(false);
+
+  const handleNavClick = (id) => {
+    onNavigate(id);
+    if (onCloseMobile) onCloseMobile();
+  };
+
   return (
-      <aside className="sidebar">
-        {/* Brand */}
-        <h2 className="brand">
-          <Leaf size={26} />
-          <span>CarbonTrack</span>
-        </h2>
+    <>
+      {/* Mobile Backdrop Overlay */}
+      {mobileOpen && (
+        <div
+          className="sidebar-backdrop"
+          onClick={onCloseMobile}
+          aria-hidden="true"
+        />
+      )}
 
-        {/* Navigation */}
-        <nav className="sidebar-nav">
-          {menuItems.map(({ label, icon: Icon }) => (
-              <button
-                  key={label}
-                  type="button"
-                  className={`nav-item ${
-                      activePage === label ? "active" : ""
-                  }`}
-                  onClick={() => onNavigate(label)}
-              >
-                <Icon size={20} />
-                <span>{label}</span>
-              </button>
-          ))}
-        </nav>
-
-        {/* Bottom section */}
-        <div className="sidebar-bottom">
-          <p className="sidebar-footer">
-            Track less. Sustain more.
-          </p>
-
-          {/* User information */}
-          <div className="sidebar-user">
-            <div className="sidebar-user-avatar">
-              <UserRound size={21} />
+      <aside
+        className={`sidebar ${collapsed ? "collapsed" : ""} ${
+          mobileOpen ? "mobile-open" : ""
+        }`}
+      >
+        {/* Top Header / Brand */}
+        <div className="sidebar-brand-wrapper">
+          <div
+            className="sidebar-brand"
+            onClick={() => handleNavClick("Dashboard")}
+          >
+            <div className="brand-logo-badge">
+              <Leaf size={22} />
             </div>
-
-            <div className="sidebar-user-details">
-            <span className="sidebar-welcome">
-              Welcome back!
-            </span>
-
-              <span className="sidebar-user-name">
-              {userName || "User"}
-            </span>
-            </div>
+            {!collapsed && <span className="brand-name">CarbonTrack</span>}
           </div>
 
-          {/* Logout */}
+          {/* Desktop collapse toggle */}
           <button
-              type="button"
-              className="sidebar-logout"
-              onClick={onLogout}
+            type="button"
+            className="desktop-collapse-btn"
+            onClick={() => setCollapsed(!collapsed)}
+            aria-label={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+            title={collapsed ? "Expand sidebar" : "Collapse sidebar"}
+          >
+            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          </button>
+
+          {/* Mobile close button */}
+          <button
+            type="button"
+            className="mobile-close-btn"
+            onClick={onCloseMobile}
+            aria-label="Close menu"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        {/* Navigation Sections */}
+        <nav className="sidebar-nav">
+          <div className="nav-group">
+            {!collapsed && <span className="nav-group-title">MAIN MENU</span>}
+            {menuItems.map(({ label, id, icon: Icon }) => {
+              const isActive = activePage === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`nav-item ${isActive ? "active" : ""}`}
+                  onClick={() => handleNavClick(id)}
+                  title={collapsed ? label : ""}
+                >
+                  <Icon size={19} className="nav-icon" />
+                  {!collapsed && <span className="nav-label">{label}</span>}
+                  {isActive && <span className="active-glow-indicator" />}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="nav-group secondary-group">
+            {!collapsed && <span className="nav-group-title">PREFERENCES</span>}
+            {secondaryItems.map(({ label, id, icon: Icon }) => {
+              const isActive = activePage === id;
+              return (
+                <button
+                  key={id}
+                  type="button"
+                  className={`nav-item ${isActive ? "active" : ""}`}
+                  onClick={() => handleNavClick(id)}
+                  title={collapsed ? label : ""}
+                >
+                  <Icon size={19} className="nav-icon" />
+                  {!collapsed && <span className="nav-label">{label}</span>}
+                </button>
+              );
+            })}
+          </div>
+        </nav>
+
+        {/* Sidebar Footer User Card & Logout */}
+        <div className="sidebar-footer">
+          <div
+            className="sidebar-user-card"
+            onClick={() => handleNavClick("Profile")}
+            title="View Profile"
+          >
+            <div className="sidebar-user-avatar">
+              {avatarUrl ? (
+                <img src={avatarUrl} alt={userName} className="avatar-img" />
+              ) : (
+                <UserRound size={18} />
+              )}
+            </div>
+
+            {!collapsed && (
+              <div className="sidebar-user-info">
+                <span className="user-name">{userName}</span>
+                <span className="user-role">Eco Member</span>
+              </div>
+            )}
+          </div>
+
+          <button
+            type="button"
+            className="sidebar-logout-btn"
+            onClick={onLogout}
+            title={collapsed ? "Logout" : ""}
           >
             <LogOut size={18} />
-            <span>Logout</span>
+            {!collapsed && <span>Logout</span>}
           </button>
         </div>
       </aside>
+    </>
   );
 }

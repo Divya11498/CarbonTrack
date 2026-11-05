@@ -1,11 +1,12 @@
-
 import { useState } from "react";
-import { Leaf, Mail, Lock, Eye, EyeOff } from "lucide-react";
+import { Leaf, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import GoogleAuthButton from "./GoogleAuthButton";
 import { apiRequest } from "../api";
 
-export default function Login({ onLogin, onRegister }) {
+export default function Login({ onLogin, onRegister, onForgotPassword, onNavigateHome }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -13,107 +14,173 @@ export default function Login({ onLogin, onRegister }) {
   const handleSubmit = async (event) => {
     event.preventDefault();
     setError("");
-    setLoading(true);
 
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Please enter your email.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
+    setLoading(true);
     try {
       const data = await apiRequest("/api/auth/login", {
         method: "POST",
-        body: { email: email.trim(), password },
+        body: { email: trimmedEmail, password },
       });
 
       if (!data?.token) {
-        throw new Error("The backend did not return an authentication token.");
+        throw new Error("No authentication token received.");
       }
 
-      const savedName = localStorage.getItem(
-        `carbontrack_name_${email.trim().toLowerCase()}`
-      );
+      if (rememberMe) {
+        localStorage.setItem("carbontrack_remember", "true");
+        localStorage.setItem("carbontrack_saved_email", trimmedEmail);
+      } else {
+        localStorage.removeItem("carbontrack_remember");
+        localStorage.removeItem("carbontrack_saved_email");
+      }
 
       onLogin(
         data.token,
-        email.trim(),
-        data.name || data.fullName || savedName || "User"
+        trimmedEmail,
+        data.name || data.displayName || "User",
+        data.avatarUrl || ""
       );
     } catch (err) {
-      setError(err.message || "Unable to sign in. Please try again.");
+      setError(err.message || "Invalid credentials.");
     } finally {
       setLoading(false);
     }
   };
 
+  const handleGoogleSuccess = (data) => {
+    if (data?.token) {
+      onLogin(
+        data.token,
+        data.email,
+        data.name || "User",
+        data.avatarUrl || ""
+      );
+    }
+  };
+
   return (
-      <div className="auth-page">
-        <div className="auth-card">
-          <div className="auth-brand">
-            <Leaf size={36} />
-            <h1>CarbonTrack</h1>
-            <p>Small steps. Greener future.</p>
+    <div className="auth-page">
+      <div className="auth-card auth-card-compact">
+        {/* Brand */}
+        <div className="auth-brand" onClick={onNavigateHome}>
+          <div className="brand-logo-badge">
+            <Leaf size={18} />
+          </div>
+          <h1>CarbonTrack</h1>
+        </div>
+
+        <h2 className="auth-compact-heading">Welcome Back</h2>
+
+        {/* Google OAuth Button */}
+        <div className="auth-oauth-wrap">
+          <GoogleAuthButton
+            onSuccess={handleGoogleSuccess}
+            onError={(msg) => setError(msg)}
+            text="Sign in with Google"
+          />
+          <div className="auth-divider-line">
+            <span>or email</span>
+          </div>
+        </div>
+
+        {error && (
+          <div className="auth-error-banner" role="alert">
+            <AlertCircle size={14} />
+            <span>{error}</span>
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="auth-modal-form">
+          <div className="form-group">
+            <label htmlFor="login-email">Email Address</label>
+            <div className="input-with-icon">
+              <Mail size={16} className="field-icon" />
+              <input
+                id="login-email"
+                type="email"
+                placeholder="name@example.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                autoComplete="email"
+                required
+              />
+            </div>
           </div>
 
-          <h2>Welcome back!</h2>
-          <p className="auth-description">
-            Sign in to track your carbon footprint.
-          </p>
-
-          <form onSubmit={handleSubmit}>
-            <label htmlFor="login-email">Email address</label>
-            <div className="auth-input">
-              <Mail size={19} />
-              <input
-                  id="login-email"
-                  type="email"
-                  placeholder="you@example.com"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  autoComplete="username"
-                  required
-              />
-            </div>
-
-            <label htmlFor="login-password">Password</label>
-            <div className="auth-input">
-              <Lock size={19} />
-              <input
-                  id="login-password"
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter your password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  autoComplete="current-password"
-                  required
-              />
+          <div className="form-group">
+            <div className="form-label-row">
+              <label htmlFor="login-password">Password</label>
               <button
-                  className="password-toggle"
-                  type="button"
-                  aria-label={showPassword ? "Hide password" : "Show password"}
-                  onClick={() => setShowPassword((previous) => !previous)}
+                type="button"
+                className="btn-forgot-link"
+                onClick={onForgotPassword}
               >
-                {showPassword ? <EyeOff size={19} /> : <Eye size={19} />}
+                Forgot Password?
               </button>
             </div>
+            <div className="input-with-icon">
+              <Lock size={16} className="field-icon" />
+              <input
+                id="login-password"
+                type={showPassword ? "text" : "password"}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+              />
+              <button
+                type="button"
+                className="password-toggle-btn"
+                onClick={() => setShowPassword(!showPassword)}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
 
-            {error && (
-                <p role="alert" className="auth-error">
-                  {error}
-                </p>
-            )}
+          <div className="form-options-row">
+            <label className="checkbox-label">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
+              />
+              <span>Remember me</span>
+            </label>
+          </div>
 
-            <button className="auth-submit" type="submit" disabled={loading}>
-              {loading ? "Signing in..." : "Sign In"}
+          <button
+            type="submit"
+            className="btn-primary auth-submit-btn"
+            disabled={loading}
+          >
+            {loading ? "Signing in..." : "Login"}
+          </button>
+
+          <div className="auth-footer-switch">
+            <span>Don't have an account?</span>{" "}
+            <button
+              type="button"
+              className="switch-link-btn"
+              onClick={onRegister}
+            >
+              Register
             </button>
-          </form>
-
-          <p className="auth-switch">
-            Don't have an account?{" "}
-            <button type="button" onClick={onRegister}>
-              Create account
-            </button>
-          </p>
-
-          <p className="auth-disclaimer">
-            Your sign-in details will be verified by the backend.
-          </p>
-        </div>
+          </div>
+        </form>
       </div>
+    </div>
   );
 }
