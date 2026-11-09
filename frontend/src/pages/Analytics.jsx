@@ -11,6 +11,7 @@ import {
   Leaf,
   AlertCircle,
   RefreshCw,
+  Download,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -70,6 +71,34 @@ export default function Analytics({ token }) {
     if (token) loadData();
   }, [token, period]);
 
+  function handleDownloadReport() {
+    if (!summary) return;
+    const reportData = {
+      platform: "CarbonTrack",
+      generatedAt: new Date().toISOString(),
+      timeframe: period,
+      totalEmissionsKg: summary.totalCo2eKg || 0,
+      monthlyTargetKg: summary.monthlyTargetKg || 0,
+      monthlyReducedKg: summary.totalReducedKg || 0,
+      sustainabilityScore: summary.sustainabilityScore || 0,
+      communityAverageKg: 185.0,
+      categoryBreakdown: categoryData,
+      trendData: trendData,
+    };
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(reportData, null, 2)
+    )}`;
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", jsonString);
+    downloadAnchor.setAttribute(
+      "download",
+      `carbontrack_analytics_report_${period}_${new Date().toISOString().slice(0, 10)}.json`
+    );
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  }
+
   return (
     <div className="analytics-page">
       <div className="page-heading-row">
@@ -78,7 +107,7 @@ export default function Analytics({ token }) {
           <p>Emissions trends and community benchmarks.</p>
         </div>
 
-        <div className="timeframe-buttons">
+        <div className="timeframe-buttons" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
           {["week", "month", "year"].map((p) => (
             <button
               key={p}
@@ -96,6 +125,23 @@ export default function Analytics({ token }) {
             title="Refresh analytics"
           >
             <RefreshCw size={16} />
+          </button>
+          <button
+            type="button"
+            className="btn-outline"
+            onClick={handleDownloadReport}
+            disabled={!summary}
+            title="Download full analytics report"
+            style={{
+              padding: "6px 12px",
+              fontSize: "12px",
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+            }}
+          >
+            <Download size={14} />
+            <span>Export Report</span>
           </button>
         </div>
       </div>

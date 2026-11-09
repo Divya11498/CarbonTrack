@@ -59,7 +59,7 @@ const CATEGORY_META = {
   },
 };
 
-export default function Recommendations({ token, onNavigate }) {
+export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
   const [recommendations, setRecommendations] = useState([]);
   const [completedList, setCompletedList] = useState([]);
   const [insights, setInsights] = useState(null);
@@ -592,17 +592,43 @@ export default function Recommendations({ token, onNavigate }) {
                 </div>
 
                 {/* Footer Action Buttons */}
-                <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ paddingTop: "14px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "10px" }}>
                   {isCompleted ? (
-                    <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--emerald)", fontWeight: "700", fontSize: "13px" }}>
-                      <CheckCircle2 size={16} />
-                      Completed &bull; Verified in Carbon Log
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", flexWrap: "wrap", gap: "8px" }}>
+                      <div style={{ display: "inline-flex", alignItems: "center", gap: "6px", color: "var(--emerald)", fontWeight: "700", fontSize: "13px" }}>
+                        <CheckCircle2 size={16} />
+                        Completed &bull; Verified in Carbon Log
+                      </div>
+
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => onOpenAiChat && onOpenAiChat(rec)}
+                        style={{ padding: "6px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                        title="Ask CarbonTrack AI for follow-up strategies"
+                      >
+                        <Sparkles size={13} style={{ color: "var(--primary)" }} />
+                        <span>Ask AI</span>
+                      </button>
                     </div>
                   ) : isInProgress ? (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                      <span className="badge-pill-green" style={{ fontSize: "12px" }}>
-                        <Play size={12} /> In Progress
-                      </span>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", flexWrap: "wrap", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                        <span className="badge-pill-green" style={{ fontSize: "12px" }}>
+                          <Play size={12} /> In Progress
+                        </span>
+
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          onClick={() => onOpenAiChat && onOpenAiChat(rec)}
+                          style={{ padding: "6px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                          title="Ask CarbonTrack AI for guidance on this action"
+                        >
+                          <Sparkles size={13} style={{ color: "var(--primary)" }} />
+                          <span>Ask CarbonTrack AI</span>
+                        </button>
+                      </div>
 
                       <button
                         type="button"
@@ -615,28 +641,41 @@ export default function Recommendations({ token, onNavigate }) {
                       </button>
                     </div>
                   ) : (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%" }}>
-                      <button
-                        type="button"
-                        className="btn-primary"
-                        onClick={() => handleStartAction(rec.id)}
-                        disabled={isActing}
-                        style={{ padding: "8px 16px", fontSize: "13px" }}
-                      >
-                        {isActing ? (
-                          <RefreshCw size={14} className="animate-spin" />
-                        ) : (
-                          <Play size={13} />
-                        )}
-                        Start Action
-                      </button>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%", flexWrap: "wrap", gap: "8px" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                        <button
+                          type="button"
+                          className="btn-primary"
+                          onClick={() => handleStartAction(rec.id)}
+                          disabled={isActing}
+                          style={{ padding: "8px 16px", fontSize: "13px" }}
+                        >
+                          {isActing ? (
+                            <RefreshCw size={14} className="animate-spin" />
+                          ) : (
+                            <Play size={13} />
+                          )}
+                          Start Action
+                        </button>
+
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          onClick={() => onOpenAiChat && onOpenAiChat(rec)}
+                          style={{ padding: "7px 12px", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "5px" }}
+                          title="Ask CarbonTrack AI for practical implementation steps"
+                        >
+                          <Sparkles size={13} style={{ color: "var(--primary)" }} />
+                          <span>Ask CarbonTrack AI</span>
+                        </button>
+                      </div>
 
                       <button
                         type="button"
-                        className="btn-secondary"
+                        className="btn-outline"
                         onClick={() => handleDismissAction(rec.id)}
                         disabled={isActing}
-                        style={{ padding: "8px 12px", fontSize: "12px", color: "var(--text-muted)" }}
+                        style={{ padding: "7px 12px", fontSize: "12px", color: "var(--text-muted)" }}
                         title="Dismiss recommendation"
                       >
                         Dismiss

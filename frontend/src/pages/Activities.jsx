@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Flame,
   Info,
+  Download,
 } from "lucide-react";
 import { apiRequest } from "../api";
 import EditActivityModal from "../components/EditActivityModal";
@@ -169,6 +170,33 @@ export default function Activities({
 
     return matchesSearch && matchesCat;
   });
+
+  function handleExportCsv() {
+    if (filteredActivities.length === 0) return;
+    const headers = ["Date", "Category", "Activity", "Quantity", "Unit", "CO2e (kg)", "Notes"];
+    const rows = filteredActivities.map((a) => [
+      `"${a.date || a.logDate || ""}"`,
+      `"${a.category || a.categoryName || ""}"`,
+      `"${a.activity || a.activityName || ""}"`,
+      a.amount || a.quantity || 0,
+      `"${a.unit || ""}"`,
+      a.co2e || a.co2eKg || 0,
+      `"${(a.description || a.notes || "").replace(/"/g, '""')}"`,
+    ]);
+    const csvContent =
+      "data:text/csv;charset=utf-8," +
+      [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    link.setAttribute(
+      "download",
+      `carbontrack_activities_${new Date().toISOString().slice(0, 10)}.csv`
+    );
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 
   return (
     <div className="activities-page-wrapper">
@@ -345,6 +373,25 @@ export default function Activities({
                 <option value="3">Food</option>
                 <option value="4">Shopping</option>
               </select>
+
+              <button
+                type="button"
+                className="btn-outline"
+                onClick={handleExportCsv}
+                disabled={filteredActivities.length === 0}
+                title="Export filtered activities to CSV"
+                style={{
+                  padding: "6px 12px",
+                  fontSize: "12px",
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                <Download size={14} />
+                <span>Export CSV</span>
+              </button>
             </div>
           </div>
 

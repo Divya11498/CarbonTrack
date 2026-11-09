@@ -25,6 +25,7 @@ import Achievements from "./components/Achievements";
 import Organisation from "./pages/Organisation";
 import Profile from "./pages/Profile";
 import Settings from "./pages/Settings";
+import AiChatbot from "./components/AiChatbot";
 
 const CATEGORY_NAMES = {
   1: "Transport",
@@ -109,6 +110,37 @@ export default function App() {
   const [summaryData, setSummaryData] = useState(null);
   const [monthlyTarget, setMonthlyTarget] = useState(200);
 
+  // AI Chatbot States
+  const [aiChatOpen, setAiChatOpen] = useState(false);
+  const [aiChatContext, setAiChatContext] = useState(null);
+
+  function handleOpenAiChat(context = null) {
+    setAiChatContext(context);
+    setAiChatOpen(true);
+  }
+
+  // Purge any legacy project keys (e.g. PlacePrep) from storage
+  useEffect(() => {
+    try {
+      const legacyKeys = [
+        "placeprep_token",
+        "placeprep_email",
+        "placeprep_user",
+        "placeprep_userName",
+        "placeprep_avatarUrl",
+        "placeprep_role",
+        "prep_token",
+        "prep_user",
+      ];
+      legacyKeys.forEach((k) => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+    } catch {
+      // Storage access restricted in some environments
+    }
+  }, []);
+
   function clearSession(message = "") {
     sessionStorage.removeItem("carbontrack_token");
     sessionStorage.removeItem("carbontrack_email");
@@ -119,6 +151,15 @@ export default function App() {
     localStorage.removeItem("carbontrack_email");
     localStorage.removeItem("carbontrack_userName");
     localStorage.removeItem("carbontrack_avatarUrl");
+
+    try {
+      ["placeprep_token", "placeprep_email", "placeprep_user"].forEach((k) => {
+        localStorage.removeItem(k);
+        sessionStorage.removeItem(k);
+      });
+    } catch {
+      // Ignored
+    }
 
     setToken("");
     setEmail("");
@@ -390,7 +431,11 @@ export default function App() {
             )}
 
             {activePage === "Recommendations" && (
-              <Recommendations token={token} onNavigate={setActivePage} />
+              <Recommendations
+                token={token}
+                onNavigate={setActivePage}
+                onOpenAiChat={handleOpenAiChat}
+              />
             )}
 
             {activePage === "Leaderboard" && (
@@ -423,6 +468,15 @@ export default function App() {
             )}
           </ErrorBoundary>
         </main>
+
+        {/* AI Sustainability Chatbot (Floating) */}
+        <AiChatbot
+          token={token}
+          isOpen={aiChatOpen}
+          onToggle={() => setAiChatOpen((prev) => !prev)}
+          initialContext={aiChatContext}
+          onClearContext={() => setAiChatContext(null)}
+        />
       </div>
     </div>
   );

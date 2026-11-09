@@ -347,7 +347,12 @@ export default function Organisation({ token }) {
             <div className="modal-card" style={{ maxWidth: "520px" }}>
               <div className="modal-header">
                 <h3>Create Organization Workspace</h3>
-                <button type="button" onClick={() => setCreateOrgModalOpen(false)}>
+                <button
+                  type="button"
+                  className="modal-close-btn"
+                  onClick={() => setCreateOrgModalOpen(false)}
+                  aria-label="Close modal"
+                >
                   <X size={18} />
                 </button>
               </div>
@@ -627,7 +632,7 @@ export default function Organisation({ token }) {
             <Building2 size={20} />
           </div>
           <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Workforce Footprint</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
+          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
             {totalEmissions.toFixed(1)} kg
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>Total logged CO₂e</span>
@@ -638,7 +643,7 @@ export default function Organisation({ token }) {
             <Users size={20} />
           </div>
           <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Team Members</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
+          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
             {orgData?.totalMembers || filteredMembers.length}
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
@@ -651,10 +656,10 @@ export default function Organisation({ token }) {
             <TrendingDown size={20} />
           </div>
           <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Monthly Budget</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
+          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
             {monthlyTarget} kg
           </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: totalEmissions <= monthlyTarget ? "var(--primary-emerald)" : "#ef4444" }}>
+          <span className="kpi-sub" style={{ fontSize: "12px", color: totalEmissions <= monthlyTarget ? "var(--emerald)" : "var(--red)" }}>
             {totalEmissions <= monthlyTarget ? "Within budget ✓" : "Exceeds budget"}
           </span>
         </div>
@@ -664,7 +669,7 @@ export default function Organisation({ token }) {
             <Clock size={20} />
           </div>
           <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Pending Invitations</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-primary)", margin: "4px 0" }}>
+          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
             {orgData?.pendingInvitationsCount || (orgData?.invitations || []).length}
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
@@ -684,11 +689,12 @@ export default function Organisation({ token }) {
               padding: "10px 18px",
               border: "none",
               background: "transparent",
-              borderBottom: activeTab === "members" ? "3px solid var(--primary-forest)" : "3px solid transparent",
-              color: activeTab === "members" ? "var(--text-primary)" : "var(--text-muted)",
+              borderBottom: activeTab === "members" ? "3px solid var(--primary)" : "3px solid transparent",
+              color: activeTab === "members" ? "var(--text-main)" : "var(--text-muted)",
               fontWeight: "700",
               cursor: "pointer",
               fontSize: "14px",
+              transition: "all 0.2s ease",
             }}
           >
             Team Members ({orgData?.members?.length || 0})
@@ -702,11 +708,12 @@ export default function Organisation({ token }) {
               padding: "10px 18px",
               border: "none",
               background: "transparent",
-              borderBottom: activeTab === "departments" ? "3px solid var(--primary-forest)" : "3px solid transparent",
-              color: activeTab === "departments" ? "var(--text-primary)" : "var(--text-muted)",
+              borderBottom: activeTab === "departments" ? "3px solid var(--primary)" : "3px solid transparent",
+              color: activeTab === "departments" ? "var(--text-main)" : "var(--text-muted)",
               fontWeight: "700",
               cursor: "pointer",
               fontSize: "14px",
+              transition: "all 0.2s ease",
             }}
           >
             Departments ({orgData?.departments?.length || 0})
@@ -721,11 +728,12 @@ export default function Organisation({ token }) {
                 padding: "10px 18px",
                 border: "none",
                 background: "transparent",
-                borderBottom: activeTab === "invitations" ? "3px solid var(--primary-forest)" : "3px solid transparent",
-                color: activeTab === "invitations" ? "var(--text-primary)" : "var(--text-muted)",
+                borderBottom: activeTab === "invitations" ? "3px solid var(--primary)" : "3px solid transparent",
+                color: activeTab === "invitations" ? "var(--text-main)" : "var(--text-muted)",
                 fontWeight: "700",
                 cursor: "pointer",
                 fontSize: "14px",
+                transition: "all 0.2s ease",
               }}
             >
               Pending Invites ({orgData?.invitations?.length || 0})
@@ -942,7 +950,7 @@ export default function Organisation({ token }) {
                       </td>
 
                       <td>
-                        <strong style={{ color: "var(--text-primary)" }}>{Number(m.emissions).toFixed(1)}</strong> kg CO₂e
+                        <strong style={{ color: "var(--text-main)" }}>{Number(m.emissions).toFixed(1)}</strong> kg CO₂e
                       </td>
 
                       {isAdminOrOwner && (
@@ -965,8 +973,8 @@ export default function Organisation({ token }) {
                               {/* Remove member button */}
                               <button
                                 type="button"
-                                className="btn-outline"
-                                style={{ padding: "4px 8px", color: "#ef4444" }}
+                                className="btn-outline-danger"
+                                style={{ padding: "4px 8px" }}
                                 title="Remove member"
                                 onClick={() => setMemberToRemove(m)}
                               >
@@ -1049,12 +1057,12 @@ export default function Organisation({ token }) {
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", borderTop: "1px solid var(--border)", paddingTop: "10px", marginBottom: "10px" }}>
                       <span style={{ color: "var(--text-muted)" }}>Department</span>
-                      <strong style={{ color: "var(--text-primary)" }}>{m.department || "Operations"}</strong>
+                      <strong style={{ color: "var(--text-main)" }}>{m.department || "Operations"}</strong>
                     </div>
 
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "8px" }}>
                       <span style={{ color: "var(--text-muted)" }}>Emissions</span>
-                      <strong style={{ color: "var(--primary-emerald)" }}>{Number(m.emissions).toFixed(1)} kg CO₂e</strong>
+                      <strong style={{ color: "var(--emerald)" }}>{Number(m.emissions).toFixed(1)} kg CO₂e</strong>
                     </div>
                   </div>
 
@@ -1073,8 +1081,8 @@ export default function Organisation({ token }) {
 
                       <button
                         type="button"
-                        className="btn-outline"
-                        style={{ color: "#ef4444", fontSize: "11px", padding: "4px 8px" }}
+                        className="btn-outline-danger"
+                        style={{ fontSize: "11px", padding: "4px 8px" }}
                         onClick={() => setMemberToRemove(m)}
                       >
                         Remove
@@ -1209,8 +1217,8 @@ export default function Organisation({ token }) {
                       <td style={{ textAlign: "right" }}>
                         <button
                           type="button"
-                          className="btn-outline"
-                          style={{ color: "#ef4444", fontSize: "12px", padding: "4px 8px" }}
+                          className="btn-outline-danger"
+                          style={{ fontSize: "12px", padding: "4px 8px" }}
                           onClick={() => handleRevokeInvitation(inv.id)}
                         >
                           Revoke
@@ -1233,7 +1241,12 @@ export default function Organisation({ token }) {
           <div className="modal-card">
             <div className="modal-header">
               <h3>Invite Team Member</h3>
-              <button type="button" onClick={() => setInviteModalOpen(false)}>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setInviteModalOpen(false)}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -1297,7 +1310,12 @@ export default function Organisation({ token }) {
           <div className="modal-card" style={{ maxWidth: "540px" }}>
             <div className="modal-header">
               <h3>Organization Settings</h3>
-              <button type="button" onClick={() => setEditOrgModalOpen(false)}>
+              <button
+                type="button"
+                className="modal-close-btn"
+                onClick={() => setEditOrgModalOpen(false)}
+                aria-label="Close modal"
+              >
                 <X size={18} />
               </button>
             </div>
@@ -1371,8 +1389,7 @@ export default function Organisation({ token }) {
                   </label>
                   <button
                     type="button"
-                    className="btn-outline"
-                    style={{ color: "#ef4444", borderColor: "rgba(239, 68, 68, 0.4)", fontSize: "12.5px" }}
+                    className="btn-outline-danger"
                     onClick={() => {
                       setEditOrgModalOpen(false);
                       setDeleteConfirmOpen(true);
@@ -1431,8 +1448,7 @@ export default function Organisation({ token }) {
               </button>
               <button
                 type="button"
-                className="btn-primary"
-                style={{ background: "#ef4444", borderColor: "#ef4444" }}
+                className="btn-danger"
                 onClick={handleRemoveMember}
               >
                 Yes, Remove
@@ -1477,8 +1493,7 @@ export default function Organisation({ token }) {
               </button>
               <button
                 type="button"
-                className="btn-primary"
-                style={{ background: "#ef4444", borderColor: "#ef4444" }}
+                className="btn-danger"
                 onClick={handleDeleteOrganization}
               >
                 Delete Permanently
