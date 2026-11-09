@@ -362,6 +362,7 @@ export default function App() {
                 monthlyTarget={monthlyTarget}
                 summaryData={summaryData}
                 onNavigate={setActivePage}
+                token={token}
               />
             )}
 

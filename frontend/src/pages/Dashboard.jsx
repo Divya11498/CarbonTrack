@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { apiRequest } from "../api";
 import {
   Leaf,
   TrendingDown,
@@ -12,6 +13,8 @@ import {
   Calendar,
   ArrowRight,
   Sparkles,
+  Zap,
+  CheckCircle2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -43,9 +46,28 @@ export default function Dashboard({
   monthlyTarget = 200,
   summaryData = null,
   onNavigate,
+  token = "",
 }) {
   const [period, setPeriod] = useState("month");
   const [selectedCategory, setSelectedCategory] = useState("all");
+  const [topRecommendation, setTopRecommendation] = useState(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+
+  useEffect(() => {
+    if (!token) return;
+    setLoadingAi(true);
+    apiRequest("/api/recommendations", { token })
+      .then((recs) => {
+        if (Array.isArray(recs) && recs.length > 0) {
+          const actionable =
+            recs.find((r) => r.status === "ACTIVE" || r.status === "IN_PROGRESS") ||
+            recs[0];
+          setTopRecommendation(actionable);
+        }
+      })
+      .catch(() => {})
+      .finally(() => setLoadingAi(false));
+  }, [token]);
 
   const today = new Date().toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);
@@ -237,6 +259,176 @@ export default function Dashboard({
           trend="Tier A"
           trendType="positive"
         />
+      </div>
+
+      {/* AI Recommendation Spotlight Card */}
+      <div
+        className="panel"
+        style={{
+          marginBottom: "20px",
+          padding: "18px 24px",
+          background: "linear-gradient(135deg, rgba(141, 155, 114, 0.09) 0%, rgba(92, 140, 166, 0.06) 100%)",
+          borderRadius: "14px",
+          border: "1px solid rgba(141, 155, 114, 0.28)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: "20px",
+          flexWrap: "wrap",
+          position: "relative",
+          overflow: "hidden",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "flex-start", gap: "16px", flex: "1 1 360px" }}>
+          <div
+            style={{
+              width: "42px",
+              height: "42px",
+              borderRadius: "10px",
+              background: "rgba(141, 155, 114, 0.18)",
+              color: "#8D9B72",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Sparkles size={20} />
+          </div>
+
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap", marginBottom: "4px" }}>
+              <span
+                style={{
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  textTransform: "uppercase",
+                  letterSpacing: "0.5px",
+                  color: "#8D9B72",
+                }}
+              >
+                AI Recommendation Spotlight
+              </span>
+              {topRecommendation?.categoryName && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    background: "rgba(92, 140, 166, 0.15)",
+                    color: "#5C8CA6",
+                    fontWeight: 600,
+                  }}
+                >
+                  {topRecommendation.categoryName}
+                </span>
+              )}
+              {topRecommendation?.priorityLevel && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    background:
+                      topRecommendation.priorityLevel === "High"
+                        ? "rgba(200, 90, 84, 0.15)"
+                        : "rgba(141, 155, 114, 0.15)",
+                    color:
+                      topRecommendation.priorityLevel === "High"
+                        ? "#C85A54"
+                        : "#8D9B72",
+                    fontWeight: 600,
+                  }}
+                >
+                  {topRecommendation.priorityLevel} Priority
+                </span>
+              )}
+              {topRecommendation?.status === "IN_PROGRESS" && (
+                <span
+                  style={{
+                    fontSize: "11px",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    background: "rgba(92, 140, 166, 0.2)",
+                    color: "#5C8CA6",
+                    fontWeight: 600,
+                  }}
+                >
+                  In Progress
+                </span>
+              )}
+            </div>
+
+            <h4
+              style={{
+                fontSize: "15px",
+                fontWeight: 600,
+                color: "var(--text-main)",
+                margin: "0 0 4px 0",
+              }}
+            >
+              {topRecommendation
+                ? topRecommendation.title
+                : "AI-Powered Sustainability Insights"}
+            </h4>
+
+            <p
+              style={{
+                fontSize: "13px",
+                color: "var(--text-muted)",
+                margin: 0,
+                lineHeight: "1.45",
+              }}
+            >
+              {topRecommendation
+                ? (topRecommendation.problemIdentified || topRecommendation.actionDescription || topRecommendation.description)
+                : "Personalized emission-reduction actions generated from your activity history, energy, and transportation logs."}
+            </p>
+
+            {topRecommendation && (
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "14px",
+                  marginTop: "8px",
+                  fontSize: "12px",
+                  color: "var(--text-muted)",
+                  flexWrap: "wrap",
+                }}
+              >
+                <span style={{ display: "inline-flex", alignItems: "center", gap: "4px", color: "#8D9B72", fontWeight: 600 }}>
+                  <TrendingDown size={14} />
+                  Est. Reduction: {Number(topRecommendation.expectedCo2eReductionKg || topRecommendation.estimatedSavingsKg || 0).toFixed(1)} kg CO₂e
+                </span>
+                {topRecommendation.difficultyLevel && (
+                  <span>Difficulty: <strong>{topRecommendation.difficultyLevel}</strong></span>
+                )}
+                {topRecommendation.timeframe && (
+                  <span>Timeframe: <strong>{topRecommendation.timeframe}</strong></span>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexShrink: 0 }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => onNavigate("Recommendations")}
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "9px 16px",
+              fontSize: "13px",
+            }}
+          >
+            <span>{topRecommendation?.status === "IN_PROGRESS" ? "Continue Action" : "View Recommendations"}</span>
+            <ArrowRight size={15} />
+          </button>
+        </div>
       </div>
 
       {/* Filter Toolbar */}
