@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { Leaf, Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
+import { Mail, Lock, Eye, EyeOff, AlertCircle } from "lucide-react";
 import GoogleAuthButton from "./GoogleAuthButton";
+import CarbonTrackLogo from "../components/CarbonTrackLogo";
 import { apiRequest } from "../api";
 
 export default function Login({ onLogin, onRegister, onForgotPassword, onNavigateHome }) {
@@ -72,11 +73,8 @@ export default function Login({ onLogin, onRegister, onForgotPassword, onNavigat
     <div className="auth-page">
       <div className="auth-card auth-card-compact">
         {/* Brand */}
-        <div className="auth-brand" onClick={onNavigateHome}>
-          <div className="brand-logo-badge">
-            <Leaf size={18} />
-          </div>
-          <h1>CarbonTrack</h1>
+        <div className="auth-brand" onClick={onNavigateHome} style={{ cursor: "pointer" }}>
+          <CarbonTrackLogo size={28} showText={true} />
         </div>
 
         <h2 className="auth-compact-heading">Welcome Back</h2>

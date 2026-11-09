@@ -16,6 +16,7 @@ import {
   ChevronRight,
   X,
 } from "lucide-react";
+import CarbonTrackLogo from "./CarbonTrackLogo";
 
 const menuItems = [
   { label: "Dashboard", id: "Dashboard", icon: LayoutDashboard },
@@ -70,11 +71,9 @@ export default function Sidebar({
           <div
             className="sidebar-brand"
             onClick={() => handleNavClick("Dashboard")}
+            title="CarbonTrack"
           >
-            <div className="brand-logo-badge">
-              <Leaf size={22} />
-            </div>
-            {!collapsed && <span className="brand-name">CarbonTrack</span>}
+            <CarbonTrackLogo size={26} showText={!collapsed} />
           </div>
 
           {/* Desktop collapse toggle */}

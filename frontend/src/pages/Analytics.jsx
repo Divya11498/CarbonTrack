@@ -30,12 +30,12 @@ import {
 import { apiRequest } from "../api";
 
 const CATEGORY_COLORS = {
-  Transport: "#16a34a",
-  Electricity: "#3b82f6",
-  Food: "#f59e0b",
-  Shopping: "#8b5cf6",
-  Waste: "#10b981",
-  Other: "#94a3b8",
+  Transport: "#8D9B72",
+  Electricity: "#5C8CA6",
+  Food: "#D99B4B",
+  Shopping: "#8774A3",
+  Waste: "#789968",
+  Other: "#8B9582",
 };
 
 export default function Analytics({ token }) {
@@ -172,7 +172,7 @@ export default function Analytics({ token }) {
                   <Bar
                     dataKey="emissions"
                     name="CO₂e Emissions"
-                    fill="#10b981"
+                    fill="#8D9B72"
                     radius={[6, 6, 0, 0]}
                   />
                 </BarChart>

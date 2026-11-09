@@ -1,79 +1,135 @@
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap');
 
+/* ==========================================================================
+   CARBONTRACK CENTRALIZED DESIGN SYSTEM & THEME TOKENS
+   Light Theme: Color Hunt inspired (Sage #8D9B72, Warm Ivory #F7F3EC, Beige #EAE2D5, Light Grey #EEEEEE, Charcoal #222831)
+   Dark Theme: Deep Charcoal #393E46, Navy #222831, Elevated #2D3239, Muted Sage #8D9B72 / #A3B18A, Off-white #F7F3EC
+   ========================================================================== */
+
 :root {
   font-family: 'Plus Jakarta Sans', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   
-  /* Brand Sustainability Palette */
-  --primary-forest: #166534;
-  --primary: #15803d;
-  --primary-hover: #166534;
-  --emerald: #10b981;
-  --emerald-light: #d1fae5;
-  --lime: #84cc16;
-  --lime-light: #ecfccb;
-  --amber: #f59e0b;
-  --amber-light: #fef3c7;
-  --blue: #3b82f6;
-  --blue-light: #dbeafe;
-  --purple: #8b5cf6;
-  --purple-light: #ede9fe;
-  --red: #ef4444;
-  --red-light: #fee2e2;
+  /* Primary Brand Sustainability Accents */
+  --primary: #8D9B72;
+  --primary-hover: #738159;
+  --primary-dark: #5D6652;
+  --primary-light: #E8ECE2;
+  --primary-rgb: 141, 155, 114;
+  --primary-gradient: linear-gradient(135deg, #8D9B72 0%, #6E7C55 100%);
+  --primary-gradient-subtle: linear-gradient(135deg, rgba(141, 155, 114, 0.14) 0%, rgba(110, 124, 85, 0.06) 100%);
 
-  /* Light Theme Surfaces & Text */
-  --bg-page: #f8faf8;
-  --bg-subtle: #f1f5f1;
-  --bg-card: #ffffff;
-  --bg-card-hover: #fcfdfc;
-  --bg-input: #ffffff;
-  --border: #e2e8e2;
-  --border-focus: #10b981;
-  --text-main: #0f172a;
-  --text-muted: #64748b;
-  --text-light: #94a3b8;
-  --header-bg: rgba(255, 255, 255, 0.85);
-  --sidebar-bg: #ffffff;
+  /* Complementary Status Accents */
+  --emerald: #789968;
+  --emerald-light: #EBF2E8;
+  --lime: #8EA055;
+  --lime-light: #F2F5E6;
+  --amber: #D99B4B;
+  --amber-light: #FBF4E8;
+  --blue: #5C8CA6;
+  --blue-light: #EBF3F8;
+  --purple: #8774A3;
+  --purple-light: #F3EFF8;
+  --red: #C85A54;
+  --red-light: #FCEEEC;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
-  --shadow-card: 0 4px 20px rgba(16, 185, 129, 0.05);
+  /* LIGHT THEME PALETTE */
+  --bg-page: #F7F3EC;            /* Warm Ivory */
+  --bg-subtle: #EAE2D5;          /* Soft Beige */
+  --bg-card: #FFFFFF;            /* Pure Crisp Card */
+  --bg-card-hover: #FCFBF8;
+  --bg-card-elevated: #FFFFFF;
+  --bg-input: #FFFFFF;
+  --border: #DFD7CA;            /* Soft Warm Border */
+  --border-subtle: #EEEEEE;     /* Light Grey Reference */
+  --border-focus: #8D9B72;
+  --text-main: #222831;         /* Dark Charcoal */
+  --text-muted: #5D6652;        /* Earthy Muted Charcoal */
+  --text-light: #8B9582;
+  --header-bg: rgba(247, 243, 236, 0.92);
+  --sidebar-bg: #FFFFFF;
+  --sidebar-border: #E8E0D2;
+  --modal-backdrop: rgba(34, 40, 49, 0.6);
 
+  /* Shadows — Soft, Layered, Elevated */
+  --shadow-xs: 0 1px 2px rgba(34, 40, 49, 0.04);
+  --shadow-sm: 0 2px 4px rgba(34, 40, 49, 0.05), 0 1px 2px rgba(34, 40, 49, 0.03);
+  --shadow-md: 0 6px 16px -2px rgba(34, 40, 49, 0.08), 0 2px 6px -1px rgba(34, 40, 49, 0.04);
+  --shadow-lg: 0 12px 28px -4px rgba(34, 40, 49, 0.10), 0 4px 10px -2px rgba(34, 40, 49, 0.05);
+  --shadow-card: 0 8px 24px -4px rgba(141, 155, 114, 0.12), 0 2px 6px rgba(34, 40, 49, 0.04);
+  --shadow-elevated: 0 16px 36px -6px rgba(34, 40, 49, 0.14), 0 0 0 1px var(--border);
+
+  /* Radius Tokens */
+  --radius-xs: 6px;
   --radius-sm: 8px;
   --radius-md: 12px;
-  --radius-lg: 18px;
-  --radius-xl: 24px;
+  --radius-lg: 16px;
+  --radius-xl: 22px;
+  --radius-full: 9999px;
 }
 
+/* ==========================================================================
+   DARK THEME PALETTE
+   Surface Hierarchy:
+   - Page Background: #393E46 (Deep Charcoal)
+   - Secondary / Sidebar / Header: #222831 (Navy Charcoal)
+   - Cards / Containers: #2D3239 (Elevated Slate)
+   - Hover Cards: #353B44
+   - Accent: #8D9B72 / #A3B18A (Sage Green)
+   - Text: #F7F3EC (Warm Off-White) / #B8C2B4 (Muted)
+   ========================================================================== */
 [data-theme="dark"] {
-  --primary-forest: #10b981;
-  --primary: #10b981;
-  --primary-hover: #34d399;
-  --emerald: #10b981;
-  --emerald-light: rgba(16, 185, 129, 0.15);
-  --lime: #a3e635;
-  --lime-light: rgba(163, 230, 53, 0.15);
+  --primary: #A3B18A;
+  --primary-hover: #B5C49D;
+  --primary-dark: #8D9B72;
+  --primary-light: rgba(163, 177, 138, 0.18);
+  --primary-rgb: 163, 177, 138;
+  --primary-gradient: linear-gradient(135deg, #8D9B72 0%, #A3B18A 100%);
+  --primary-gradient-subtle: linear-gradient(135deg, rgba(163, 177, 138, 0.16) 0%, rgba(141, 155, 114, 0.05) 100%);
 
-  /* Dark Theme Surfaces & Text */
-  --bg-page: #090d0a;
-  --bg-subtle: #101712;
-  --bg-card: #131c15;
-  --bg-card-hover: #19241b;
-  --bg-input: #152017;
-  --border: #223325;
-  --border-focus: #10b981;
-  --text-main: #f8fafc;
-  --text-muted: #94a3b8;
-  --text-light: #64748b;
-  --header-bg: rgba(19, 28, 21, 0.85);
-  --sidebar-bg: #101712;
+  /* Dark Theme Surfaces */
+  --bg-page: #393E46;           /* Deep Charcoal Reference */
+  --bg-subtle: #2D3239;         /* Elevated Surface */
+  --bg-card: #2D3239;           /* Layered Card */
+  --bg-card-hover: #353B44;      /* Interactive Elevation */
+  --bg-card-elevated: #353B44;
+  --bg-input: #252B33;
+  --border: #444C56;            /* Refined subtle border */
+  --border-subtle: #393F47;
+  --border-focus: #A3B18A;
+  --text-main: #F7F3EC;         /* Light Grey / Off-White */
+  --text-muted: #B8C2B4;        /* Soft Sage Muted */
+  --text-light: #8E998B;
+  --header-bg: rgba(34, 40, 49, 0.88);
+  --sidebar-bg: #222831;
+  --sidebar-border: #2D3239;
+  --modal-backdrop: rgba(18, 22, 28, 0.75);
 
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 10px 20px -3px rgba(0, 0, 0, 0.5);
-  --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.35);
+  /* Status Accents (Refined for Dark Surfaces) */
+  --emerald: #94BA87;
+  --emerald-light: rgba(148, 186, 135, 0.18);
+  --lime: #B8D472;
+  --lime-light: rgba(184, 212, 114, 0.18);
+  --amber: #E2AC63;
+  --amber-light: rgba(226, 172, 99, 0.18);
+  --blue: #72A5C2;
+  --blue-light: rgba(114, 165, 194, 0.18);
+  --purple: #A592C4;
+  --purple-light: rgba(165, 146, 196, 0.18);
+  --red: #E27974;
+  --red-light: rgba(226, 121, 116, 0.18);
+
+  /* Layered Deep Shadows */
+  --shadow-xs: 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 2px 6px rgba(0, 0, 0, 0.40);
+  --shadow-md: 0 8px 20px -2px rgba(0, 0, 0, 0.45);
+  --shadow-lg: 0 16px 36px -4px rgba(0, 0, 0, 0.55);
+  --shadow-card: 0 10px 28px -4px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(163, 177, 138, 0.12);
+  --shadow-elevated: 0 20px 42px -6px rgba(0, 0, 0, 0.65), 0 0 0 1px var(--border);
 }
+
+/* ==========================================================================
+   GLOBAL RESET & DEFAULTS
+   ========================================================================== */
 
 * {
   box-sizing: border-box;
@@ -97,7 +153,8 @@ body {
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: background-color 0.28s ease, color 0.28s ease, border-color 0.28s ease;
+  overflow-x: hidden;
 }
 
 button, input, select, textarea {
@@ -107,13 +164,24 @@ button, input, select, textarea {
 a {
   color: var(--primary);
   text-decoration: none;
-  transition: color 0.15s ease;
+  transition: color 0.2s ease;
 }
 
 a:hover {
-  text-decoration: underline;
+  text-decoration: none;
+  color: var(--primary-hover);
 }
 
 img, svg {
   vertical-align: middle;
+}
+
+/* Accessibility: Respect Reduced Motion */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }

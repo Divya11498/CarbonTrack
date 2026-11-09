@@ -13,6 +13,7 @@ import {
   LoaderCircle,
 } from "lucide-react";
 import GoogleAuthButton from "./GoogleAuthButton";
+import CarbonTrackLogo from "../components/CarbonTrackLogo";
 import { apiRequest } from "../api";
 
 export default function AuthModal({
@@ -321,10 +322,7 @@ export default function AuthModal({
 
         {/* Brand */}
         <div className="auth-modal-brand">
-          <div className="brand-logo-badge">
-            <Leaf size={18} className="brand-icon" />
-          </div>
-          <span className="brand-title">CarbonTrack</span>
+          <CarbonTrackLogo size={28} showText={true} />
         </div>
 
         {/* ========================================================

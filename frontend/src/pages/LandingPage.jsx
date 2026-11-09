@@ -1,10 +1,8 @@
 import { useState } from "react";
 import {
-  Leaf,
   ArrowRight,
   BarChart3,
   CheckCircle2,
-  TrendingDown,
   Target,
   Lightbulb,
   Trophy,
@@ -18,23 +16,29 @@ import {
   ChevronRight,
   Compass,
   Sparkles,
+  TreePine,
+  DollarSign,
+  TrendingDown,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import CarbonTrackLogo from "../components/CarbonTrackLogo";
+import LiveDashboardPreview from "../components/LiveDashboardPreview";
+import ScrollExpand from "../components/ScrollExpand";
+import CountUp from "../components/CountUp";
 
 export default function LandingPage({ onGetStarted, onSignIn }) {
   const { isDark, toggleTheme } = useTheme();
-  const [activeTab, setActiveTab] = useState("individual");
 
   return (
     <div className="landing-container">
       {/* Navigation Header */}
       <header className="landing-nav">
         <div className="landing-nav-inner">
-          <div className="landing-brand" onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
-            <div className="brand-logo-badge">
-              <Leaf size={22} className="brand-icon" />
-            </div>
-            <span className="brand-title">CarbonTrack</span>
+          <div
+            className="landing-brand"
+            onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
+          >
+            <CarbonTrackLogo size={32} showText={true} />
           </div>
 
           <nav className="landing-links">
@@ -52,6 +56,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
               className="theme-toggle-btn"
               onClick={toggleTheme}
               aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+              title={isDark ? "Switch to light mode" : "Switch to dark mode"}
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
@@ -73,7 +78,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         <div className="hero-content">
           <div className="hero-badge">
             <Sparkles size={16} className="badge-sparkle" />
-            <span>AI-Driven Sustainability Platform</span>
+            <span>AI-Powered Sustainability SaaS</span>
           </div>
 
           <h1 className="hero-title">
@@ -82,8 +87,8 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           </h1>
 
           <p className="hero-subtitle">
-            Understand your environmental impact, reduce your carbon footprint, and
-            build a sustainable future through smarter everyday choices.
+            Understand your environmental impact, eliminate emissions waste, and
+            build a sustainable lifestyle through precision real-time analytics.
           </p>
 
           <div className="hero-actions">
@@ -93,7 +98,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             </button>
 
             <a href="#features" className="hero-btn-secondary">
-              Explore Features
+              Explore Platform
               <ChevronRight size={18} />
             </a>
           </div>
@@ -101,114 +106,60 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           <div className="hero-trust">
             <div className="trust-item">
               <CheckCircle2 size={16} className="trust-icon" />
-              <span>Real-time EPA & IPCC factors</span>
+              <span>Real-time EPA & IPCC emission factors</span>
             </div>
             <div className="trust-item">
               <CheckCircle2 size={16} className="trust-icon" />
-              <span>Anonymous peer benchmarks</span>
+              <span>Anonymous community benchmarks</span>
             </div>
             <div className="trust-item">
               <CheckCircle2 size={16} className="trust-icon" />
-              <span>100% Free for individuals</span>
+              <span>100% Free for personal use</span>
             </div>
           </div>
         </div>
 
-        {/* Interactive Dashboard Hero Showcase */}
-        <div className="hero-preview-wrapper">
-          <div className="hero-preview-card">
-            <div className="preview-card-header">
-              <div className="preview-dots">
-                <span className="dot dot-red"></span>
-                <span className="dot dot-yellow"></span>
-                <span className="dot dot-green"></span>
-              </div>
-              <div className="preview-header-title">
-                <Leaf size={14} /> CarbonTrack Live Dashboard
-              </div>
-              <span className="preview-badge-live">Live Preview</span>
-            </div>
-
-            <div className="preview-metrics-row">
-              <div className="preview-metric">
-                <span className="metric-label">Monthly Footprint</span>
-                <strong className="metric-val">142.4 <small>kg CO₂e</small></strong>
-                <span className="metric-trend trend-down">
-                  <TrendingDown size={14} /> -18.2% vs last month
-                </span>
-              </div>
-              <div className="preview-metric">
-                <span className="metric-label">Sustainability Score</span>
-                <strong className="metric-val text-emerald">88 / 100</strong>
-                <span className="metric-tag">Top 12% in Community</span>
-              </div>
-              <div className="preview-metric">
-                <span className="metric-label">Goal Progress</span>
-                <strong className="metric-val text-lime">71% Met</strong>
-                <span className="metric-tag">57.6 kg remaining</span>
-              </div>
-            </div>
-
-            {/* Mini preview chart graphic */}
-            <div className="preview-chart-box">
-              <div className="chart-header-row">
-                <span>Weekly Emissions Breakdown</span>
-                <span className="chart-legend">
-                  <span className="legend-dot green"></span> Transport
-                  <span className="legend-dot blue"></span> Energy
-                  <span className="legend-dot amber"></span> Food
-                </span>
-              </div>
-              <div className="mock-chart-bars">
-                {[
-                  { day: "Mon", h1: 45, h2: 30, h3: 25 },
-                  { day: "Tue", h1: 30, h2: 40, h3: 20 },
-                  { day: "Wed", h1: 20, h2: 35, h3: 15 },
-                  { day: "Thu", h1: 50, h2: 25, h3: 30 },
-                  { day: "Fri", h1: 35, h2: 30, h3: 25 },
-                  { day: "Sat", h1: 15, h2: 20, h3: 10 },
-                  { day: "Sun", h1: 10, h2: 15, h3: 10 },
-                ].map((item, idx) => (
-                  <div key={idx} className="mock-bar-col">
-                    <div className="mock-stacked-bar">
-                      <div className="bar-seg amber" style={{ height: `${item.h3}%` }}></div>
-                      <div className="bar-seg blue" style={{ height: `${item.h2}%` }}></div>
-                      <div className="bar-seg green" style={{ height: `${item.h1}%` }}></div>
-                    </div>
-                    <span className="bar-day">{item.day}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <div className="preview-alert-row">
-              <Lightbulb size={18} className="alert-bulb" />
-              <p>
-                <strong>AI Insight:</strong> Switching 2 commutes to rail this week saves an estimated <strong>14.5 kg CO₂e</strong>.
-              </p>
-            </div>
-          </div>
-        </div>
+        {/* Scroll Expand Animated Live Dashboard Showcase (ReactBits inspired) */}
+        <section className="hero-live-dashboard-section" id="live-demo">
+          <ScrollExpand
+            initialWidthPercent={88}
+            targetWidthPercent={100}
+            initialRadius={24}
+            targetRadius={12}
+            initialScale={0.97}
+            targetScale={1.0}
+          >
+            <LiveDashboardPreview onTryDashboard={onGetStarted} />
+          </ScrollExpand>
+        </section>
       </section>
 
-      {/* Sustainability Statistics Ticker */}
+      {/* Sustainability Statistics Ticker with CountUp animations */}
       <section className="stats-ticker-section" id="stats">
         <div className="stats-grid-inner">
-          <div className="ticker-card">
-            <span className="ticker-number">48,500+</span>
+          <div className="ticker-card panel">
+            <span className="ticker-number">
+              <CountUp end={48500} separator="," suffix="+" />
+            </span>
             <span className="ticker-label">Kilograms of CO₂e Prevented</span>
           </div>
-          <div className="ticker-card">
-            <span className="ticker-number">12,400+</span>
+          <div className="ticker-card panel">
+            <span className="ticker-number">
+              <CountUp end={12400} separator="," suffix="+" />
+            </span>
             <span className="ticker-label">Daily Activities Logged</span>
           </div>
-          <div className="ticker-card">
-            <span className="ticker-number">92%</span>
+          <div className="ticker-card panel">
+            <span className="ticker-number">
+              <CountUp end={92} suffix="%" />
+            </span>
             <span className="ticker-label">Habit Retention Rate</span>
           </div>
-          <div className="ticker-card">
-            <span className="ticker-number">1,500+</span>
-            <span className="ticker-label">Active Community Eco-Pioneers</span>
+          <div className="ticker-card panel">
+            <span className="ticker-number">
+              <CountUp end={1500} separator="," suffix="+" />
+            </span>
+            <span className="ticker-label">Active Eco-Pioneers</span>
           </div>
         </div>
       </section>
@@ -219,13 +170,13 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           <span className="section-pill">About CarbonTrack</span>
           <h2>Empowering Everyday Environmental Accountability</h2>
           <p className="section-desc">
-            CarbonTrack was founded on a simple truth: you cannot manage what you do not measure.
-            We turn abstract carbon data into clear, actionable lifestyle insights.
+            You cannot manage what you do not measure. CarbonTrack transforms complex environmental
+            data into intuitive, actionable lifestyle and team insights.
           </p>
         </div>
 
         <div className="about-grid">
-          <div className="about-card">
+          <div className="about-card panel">
             <div className="about-icon-box bg-green">
               <Compass size={24} />
             </div>
@@ -236,25 +187,25 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             </p>
           </div>
 
-          <div className="about-card">
+          <div className="about-card panel">
             <div className="about-icon-box bg-emerald">
               <Globe2 size={24} />
             </div>
-            <h3>Open Scientific Foundation</h3>
+            <h3>Validated Scientific Standards</h3>
             <p>
-              Our calculations are calibrated against validated EPA, IPCC, and DEFRA emission
-              standards so every gram of CO₂ tracked reflects authentic climate impact.
+              Calculations are calibrated against peer-reviewed EPA, IPCC, and DEFRA emission
+              standards so every gram of carbon tracked reflects authentic planetary impact.
             </p>
           </div>
 
-          <div className="about-card">
+          <div className="about-card panel">
             <div className="about-icon-box bg-lime">
               <Users size={24} />
             </div>
-            <h3>Community-Driven Change</h3>
+            <h3>Community-Driven Action</h3>
             <p>
-              Individual efforts add up. Through collective benchmarking, social leaderboards,
-              and team goals, we foster friendly competition that accelerates planetary impact.
+              Individual efforts compound into collective shifts. Friendly benchmarking, social
+              leaderboards, and team goals inspire sustained climate action.
             </p>
           </div>
         </div>
@@ -271,19 +222,19 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         </div>
 
         <div className="how-steps-grid">
-          <div className="step-card">
+          <div className="step-card panel">
             <div className="step-number">01</div>
             <div className="step-icon-wrap">
               <Zap size={28} />
             </div>
             <h3>Log Daily Activities</h3>
             <p>
-              Enter commutes, electricity consumption, meals, and lifestyle choices.
+              Enter commutes, electricity usage, meals, and lifestyle choices.
               Our dynamic engine computes exact CO₂ emissions in real time.
             </p>
           </div>
 
-          <div className="step-card">
+          <div className="step-card panel">
             <div className="step-number">02</div>
             <div className="step-icon-wrap">
               <BarChart3 size={28} />
@@ -291,11 +242,11 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             <h3>Analyze Footprint Trends</h3>
             <p>
               Explore daily, weekly, and monthly trends across categories. Identify
-              hidden emission drivers and benchmark against peers anonymously.
+              hidden emission drivers and benchmark against community averages.
             </p>
           </div>
 
-          <div className="step-card">
+          <div className="step-card panel">
             <div className="step-number">03</div>
             <div className="step-icon-wrap">
               <Target size={28} />
@@ -303,7 +254,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             <h3>Target, Reduce & Earn</h3>
             <p>
               Set realistic reduction targets, follow tailored AI suggestions,
-              and earn achievements as you make tangible progress for the planet.
+              and earn badges as you make tangible progress for the planet.
             </p>
           </div>
         </div>
@@ -320,29 +271,29 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         </div>
 
         <div className="features-grid">
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-emerald">
               <Zap size={22} />
             </div>
-            <h4>Real-Time Emission Preview</h4>
+            <h4>Real-Time Emission Calculation</h4>
             <p>
               Watch emissions calculate dynamically as you type. Instant feedback helps you understand
               the carbon intensity of your decisions before submitting.
             </p>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-green">
               <BarChart3 size={22} />
             </div>
-            <h4>Interactive Recharts Dashboards</h4>
+            <h4>Interactive Analytics & Charts</h4>
             <p>
-              Interactive bar, pie, and trend line charts provide multi-dimensional clarity
+              Visual bar, pie, and trend charts provide multi-dimensional clarity
               into your daily, weekly, and monthly footprint.
             </p>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-lime">
               <Target size={22} />
             </div>
@@ -353,29 +304,29 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
             </p>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-emerald">
               <Lightbulb size={22} />
             </div>
             <h4>Smart Recommendations</h4>
             <p>
-              Receive personalized insights highlighting your top 3 emission drivers with actionable
+              Receive personalized insights highlighting top emission drivers with actionable
               alternatives and estimated kilograms of CO₂e saved.
             </p>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-green">
               <Trophy size={22} />
             </div>
-            <h4>Peer Benchmarks & Leaderboards</h4>
+            <h4>Peer Benchmarks & Badges</h4>
             <p>
               Compare your emissions against community averages anonymously. Celebrate green milestones
               and climb the sustainability rankings.
             </p>
           </div>
 
-          <div className="feature-card">
+          <div className="feature-card panel">
             <div className="feature-icon bg-lime">
               <Building2 size={22} />
             </div>
@@ -421,19 +372,25 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
           </div>
 
           <div className="why-card-col">
-            <div className="impact-showcase-box">
+            <div className="impact-showcase-box panel">
               <h3>The 1-Year Impact of 1 CarbonTracker</h3>
               <div className="impact-stat-item">
                 <span className="stat-label">Average Annual Reduction</span>
-                <strong>-820 kg CO₂e</strong>
+                <strong>
+                  <CountUp end={820} prefix="-" suffix=" kg CO₂e" />
+                </strong>
               </div>
               <div className="impact-stat-item">
                 <span className="stat-label">Equivalent Trees Planted</span>
-                <strong>38 Mature Trees 🌲</strong>
+                <strong>
+                  <CountUp end={38} suffix=" Mature Trees" /> 🌲
+                </strong>
               </div>
               <div className="impact-stat-item">
                 <span className="stat-label">Estimated Energy & Fuel Savings</span>
-                <strong>$420 Saved / Year ⚡</strong>
+                <strong>
+                  <CountUp end={420} prefix="$" suffix=" Saved / Year" /> ⚡
+                </strong>
               </div>
             </div>
           </div>
@@ -442,7 +399,7 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
 
       {/* Call to Action Banner */}
       <section className="cta-section">
-        <div className="cta-box">
+        <div className="cta-box panel">
           <div className="cta-content">
             <h2>Ready to Take Control of Your Carbon Footprint?</h2>
             <p>
@@ -467,13 +424,10 @@ export default function LandingPage({ onGetStarted, onSignIn }) {
         <div className="footer-inner">
           <div className="footer-col-brand">
             <div className="landing-brand">
-              <div className="brand-logo-badge">
-                <Leaf size={20} />
-              </div>
-              <span className="brand-title">CarbonTrack</span>
+              <CarbonTrackLogo size={28} showText={true} />
             </div>
             <p className="footer-tagline">
-              Track less. Sustain more. Empowering planetary stewardship through data.
+              Track less. Sustain more. Empowering planetary stewardship through precision data.
             </p>
             <p className="footer-copy">
               &copy; {new Date().getFullYear()} CarbonTrack Inc. All rights reserved.

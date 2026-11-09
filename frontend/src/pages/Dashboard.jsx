@@ -31,11 +31,11 @@ import {
 import StatCard from "../components/StatCard";
 
 const CATEGORIES = [
-  { id: 1, name: "Transport", color: "#16a34a" },
-  { id: 2, name: "Electricity", color: "#3b82f6" },
-  { id: 3, name: "Food", color: "#f59e0b" },
-  { id: 4, name: "Shopping", color: "#8b5cf6" },
-  { id: 5, name: "Waste", color: "#10b981" },
+  { id: 1, name: "Transport", color: "#8D9B72" },
+  { id: 2, name: "Electricity", color: "#5C8CA6" },
+  { id: 3, name: "Food", color: "#D99B4B" },
+  { id: 4, name: "Shopping", color: "#8774A3" },
+  { id: 5, name: "Waste", color: "#789968" },
 ];
 
 export default function Dashboard({
@@ -300,7 +300,7 @@ export default function Dashboard({
                   <Bar
                     dataKey="emissions"
                     name="Emissions"
-                    fill="#10b981"
+                    fill="#8D9B72"
                     radius={[6, 6, 0, 0]}
                   />
                 </BarChart>
