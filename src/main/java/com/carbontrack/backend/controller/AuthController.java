@@ -173,6 +173,13 @@ public class AuthController {
                 return ResponseEntity.badRequest().body(Map.of("error", "Invalid Google token issuer"));
             }
 
+            String aud = claims.path("aud").asText();
+            if (configuredGoogleClientId != null && !configuredGoogleClientId.isBlank()
+                    && !configuredGoogleClientId.trim().equals(aud)) {
+                return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                        .body(Map.of("error", "Google token audience does not match CarbonTrack Client ID"));
+            }
+
             long exp = claims.path("exp").asLong(0);
             if (exp > 0 && exp * 1000 < System.currentTimeMillis()) {
                 return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("error", "Google token has expired"));

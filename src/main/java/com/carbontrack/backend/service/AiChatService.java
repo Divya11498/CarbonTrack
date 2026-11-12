@@ -166,7 +166,7 @@ public class AiChatService {
                 Map<String, Object> response = new LinkedHashMap<>();
                 response.put("reply", reply);
                 response.put("isConfigured", true);
-                response.put("aiModel", "Gemini 1.5 Flash");
+                response.put("aiModel", "Gemini 3.5 Flash");
                 response.put("timestamp", OffsetDateTime.now());
                 return response;
             } catch (Exception e) {
@@ -218,7 +218,7 @@ public class AiChatService {
             long completedActions,
             String orgInfo) throws Exception {
 
-        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + geminiApiKey;
 
         // Build system prompt
         StringBuilder systemPrompt = new StringBuilder();

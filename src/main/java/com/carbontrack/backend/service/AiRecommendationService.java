@@ -536,7 +536,7 @@ public class AiRecommendationService {
             Map<Short, BigDecimal> activityTotals,
             List<Goal> activeGoals) throws Exception {
 
-        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + geminiApiKey;
+        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + geminiApiKey;
 
         StringBuilder telemetryPrompt = new StringBuilder();
         telemetryPrompt.append("You are an expert environmental sustainability AI for the CarbonTrack platform.\n");
