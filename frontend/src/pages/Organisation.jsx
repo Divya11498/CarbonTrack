@@ -93,8 +93,10 @@ export default function Organisation({ token }) {
   const [createDescription, setCreateDescription] = useState("");
   const [createWebsite, setCreateWebsite] = useState("");
   const [createContactEmail, setCreateContactEmail] = useState("");
-  const [createLogoUrl] = useState("");
+  const [createLogoUrl, setCreateLogoUrl] = useState("");
+  const [createDept, setCreateDept] = useState("Management");
   const [createLoading, setCreateLoading] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -287,16 +289,39 @@ export default function Organisation({ token }) {
           website: createWebsite.trim(),
           contactEmail: createContactEmail.trim(),
           logoUrl: createLogoUrl.trim(),
+          department: createDept.trim() || "Management",
         },
       });
 
       showToast("Organization workspace created successfully!");
       setCreateOrgModalOpen(false);
+      setCreateName("");
+      setCreateDescription("");
+      setCreateWebsite("");
+      setCreateContactEmail("");
+      setCreateLogoUrl("");
       loadOrg();
     } catch (err) {
       showToast(err.message || "Failed to create organization", "error");
     } finally {
       setCreateLoading(false);
+    }
+  };
+
+  // Resend Invitation
+  const handleResendInvitation = async (invitationId) => {
+    if (!orgData?.organizationId) return;
+
+    try {
+      const res = await apiRequest(`/api/organizations/${orgData.organizationId}/invitations/${invitationId}/resend`, {
+        method: "POST",
+        token,
+      });
+
+      showToast(res.message || "Invitation resent successfully!");
+      loadOrg();
+    } catch (err) {
+      showToast(err.message || "Failed to resend invitation", "error");
     }
   };
 
@@ -339,6 +364,108 @@ export default function Organisation({ token }) {
   const avgPerMember = Number(orgData?.averagePerMemberKg || 0);
   const monthlyTarget = Number(orgData?.organizationMonthlyTarget || 1200);
 
+  const renderCreateOrgModal = () => {
+    if (!createOrgModalOpen) return null;
+
+    return (
+      <div className="modal-backdrop" onClick={() => setCreateOrgModalOpen(false)}>
+        <div className="modal-card" style={{ maxWidth: "540px" }} onClick={(e) => e.stopPropagation()}>
+          <div className="modal-header">
+            <h3>Create Organization Workspace</h3>
+            <button
+              type="button"
+              className="modal-close-btn"
+              onClick={() => setCreateOrgModalOpen(false)}
+              aria-label="Close modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+          <form onSubmit={handleCreateOrgSubmit} style={{ padding: "20px" }}>
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>Organization Name *</label>
+              <input
+                type="text"
+                value={createName}
+                onChange={(e) => setCreateName(e.target.value)}
+                placeholder="e.g. Acme Sustainability Corp"
+                required
+              />
+            </div>
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>Organization Type</label>
+              <select value={createType} onChange={(e) => setCreateType(e.target.value)}>
+                <option value="COMPANY">Company / Enterprise</option>
+                <option value="UNIVERSITY">University / Education</option>
+                <option value="NGO">Non-Profit / NGO</option>
+                <option value="GOVERNMENT">Government Agency</option>
+                <option value="HOUSEHOLD">Household / Family</option>
+                <option value="OTHER">Community Coalition</option>
+              </select>
+            </div>
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>Description</label>
+              <textarea
+                rows="2"
+                value={createDescription}
+                onChange={(e) => setCreateDescription(e.target.value)}
+                placeholder="Brief description of your organization's mission"
+              />
+            </div>
+            <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+              <div className="form-group">
+                <label>Website URL</label>
+                <input
+                  type="url"
+                  value={createWebsite}
+                  onChange={(e) => setCreateWebsite(e.target.value)}
+                  placeholder="https://example.com"
+                />
+              </div>
+              <div className="form-group">
+                <label>Contact Email</label>
+                <input
+                  type="email"
+                  value={createContactEmail}
+                  onChange={(e) => setCreateContactEmail(e.target.value)}
+                  placeholder="contact@example.com"
+                />
+              </div>
+            </div>
+            <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+              <div className="form-group">
+                <label>Logo URL</label>
+                <input
+                  type="url"
+                  value={createLogoUrl}
+                  onChange={(e) => setCreateLogoUrl(e.target.value)}
+                  placeholder="https://example.com/logo.png"
+                />
+              </div>
+              <div className="form-group">
+                <label>Your Department</label>
+                <input
+                  type="text"
+                  value={createDept}
+                  onChange={(e) => setCreateDept(e.target.value)}
+                  placeholder="e.g. Management, Engineering"
+                />
+              </div>
+            </div>
+            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
+              <button type="button" className="btn-outline" onClick={() => setCreateOrgModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="submit" className="btn-primary" disabled={createLoading}>
+                {createLoading ? "Creating..." : "Create Organization"}
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   // If user doesn't belong to any organization
   if (!loading && orgData && orgData.hasOrganization === false) {
     return (
@@ -365,82 +492,7 @@ export default function Organisation({ token }) {
         </div>
 
         {/* Modal: Create Organization */}
-        {createOrgModalOpen && (
-          <div className="modal-backdrop">
-            <div className="modal-card" style={{ maxWidth: "520px" }}>
-              <div className="modal-header">
-                <h3>Create Organization Workspace</h3>
-                <button
-                  type="button"
-                  className="modal-close-btn"
-                  onClick={() => setCreateOrgModalOpen(false)}
-                  aria-label="Close modal"
-                >
-                  <X size={18} />
-                </button>
-              </div>
-              <form onSubmit={handleCreateOrgSubmit} style={{ padding: "20px" }}>
-                <div className="form-group" style={{ marginBottom: "14px" }}>
-                  <label>Organization Name *</label>
-                  <input
-                    type="text"
-                    value={createName}
-                    onChange={(e) => setCreateName(e.target.value)}
-                    placeholder="e.g. Acme Sustainability Corp"
-                    required
-                  />
-                </div>
-                <div className="form-group" style={{ marginBottom: "14px" }}>
-                  <label>Organization Type</label>
-                  <select value={createType} onChange={(e) => setCreateType(e.target.value)}>
-                    <option value="COMPANY">Company / Enterprise</option>
-                    <option value="UNIVERSITY">University / Education</option>
-                    <option value="NGO">Non-Profit / NGO</option>
-                    <option value="GOVERNMENT">Government Agency</option>
-                    <option value="OTHER">Community Coalition</option>
-                  </select>
-                </div>
-                <div className="form-group" style={{ marginBottom: "14px" }}>
-                  <label>Description</label>
-                  <textarea
-                    rows="2"
-                    value={createDescription}
-                    onChange={(e) => setCreateDescription(e.target.value)}
-                    placeholder="Brief description of your organization's mission"
-                  />
-                </div>
-                <div className="form-row-two-col">
-                  <div className="form-group">
-                    <label>Website URL</label>
-                    <input
-                      type="url"
-                      value={createWebsite}
-                      onChange={(e) => setCreateWebsite(e.target.value)}
-                      placeholder="https://example.com"
-                    />
-                  </div>
-                  <div className="form-group">
-                    <label>Contact Email</label>
-                    <input
-                      type="email"
-                      value={createContactEmail}
-                      onChange={(e) => setCreateContactEmail(e.target.value)}
-                      placeholder="contact@example.com"
-                    />
-                  </div>
-                </div>
-                <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-                  <button type="button" className="btn-outline" onClick={() => setCreateOrgModalOpen(false)}>
-                    Cancel
-                  </button>
-                  <button type="submit" className="btn-primary" disabled={createLoading}>
-                    {createLoading ? "Creating..." : "Create Organization"}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
+        {renderCreateOrgModal()}
       </div>
     );
   }
@@ -872,7 +924,7 @@ export default function Organisation({ token }) {
             }}
           >
             {/* Search Bar */}
-            <div className="roster-search-box" style={{ maxWidth: "320px", flex: 1 }}>
+            <div className="roster-search-box" style={{ maxWidth: "340px", flex: 1, position: "relative" }}>
               <Search size={16} />
               <input
                 type="text"
@@ -882,7 +934,33 @@ export default function Organisation({ token }) {
                   setSearch(e.target.value);
                   setCurrentPage(1);
                 }}
+                style={{ paddingRight: search ? "32px" : "12px" }}
               />
+              {search && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setCurrentPage(1);
+                  }}
+                  style={{
+                    position: "absolute",
+                    right: "10px",
+                    top: "50%",
+                    transform: "translateY(-50%)",
+                    background: "transparent",
+                    border: "none",
+                    cursor: "pointer",
+                    color: "var(--text-muted)",
+                    padding: "2px",
+                    display: "flex",
+                    alignItems: "center",
+                  }}
+                  aria-label="Clear search query"
+                >
+                  <X size={14} />
+                </button>
+              )}
             </div>
 
             {/* Filter Controls */}
@@ -1288,6 +1366,57 @@ export default function Organisation({ token }) {
             </button>
           </div>
 
+          {/* Friends & Family / Direct Shareable Invite Link Callout */}
+          <div
+            className="card-panel"
+            style={{
+              padding: "16px 20px",
+              marginBottom: "20px",
+              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%)",
+              border: "1px solid rgba(16, 185, 129, 0.25)",
+              borderRadius: "12px",
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              flexWrap: "wrap",
+              gap: "14px",
+            }}
+          >
+            <div>
+              <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px" }}>
+                <span>Friends, Family & Team Direct Link</span>
+              </div>
+              <p style={{ margin: "3px 0 0", color: "var(--text-muted)", fontSize: "0.84rem", maxWidth: "520px" }}>
+                Share an instant invitation link directly with coworkers, friends, or family members to collaborate on sustainability goals.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              className="btn-primary-gradient"
+              onClick={() => {
+                const pendingInv = (orgData?.invitations || [])[0];
+                const tokenVal = pendingInv ? pendingInv.invitationToken : orgData?.organizationId;
+                const link = `${window.location.origin}/accept-invite?token=${tokenVal}`;
+                navigator.clipboard.writeText(link);
+                setCopiedLink(true);
+                showToast("Direct invite link copied to clipboard!");
+                setTimeout(() => setCopiedLink(false), 2500);
+              }}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 16px",
+                fontSize: "0.85rem",
+                borderRadius: "8px",
+              }}
+            >
+              {copiedLink ? <Check size={15} /> : <Copy size={15} />}
+              <span>{copiedLink ? "Link Copied!" : "Copy Direct Invite Link"}</span>
+            </button>
+          </div>
+
           {(orgData?.invitations || []).length === 0 ? (
             <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
               <Clock size={32} style={{ margin: "0 auto 10px", opacity: 0.5 }} />
@@ -1302,7 +1431,7 @@ export default function Organisation({ token }) {
                     <th>Invited Email</th>
                     <th>Assigned Role</th>
                     <th>Department</th>
-                    <th>Invitation Token</th>
+                    <th>Invite Link</th>
                     <th style={{ textAlign: "right" }}>Actions</th>
                   </tr>
                 </thead>
@@ -1320,26 +1449,40 @@ export default function Organisation({ token }) {
                         <button
                           type="button"
                           className="btn-outline"
-                          style={{ fontSize: "11px", padding: "3px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                          style={{ fontSize: "11px", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
                           onClick={() => {
-                            navigator.clipboard.writeText(inv.invitationToken);
+                            const link = `${window.location.origin}/accept-invite?token=${inv.invitationToken}`;
+                            navigator.clipboard.writeText(link);
                             setCopiedToken(inv.id);
+                            showToast("Invite link copied!");
                             setTimeout(() => setCopiedToken(null), 2000);
                           }}
                         >
                           {copiedToken === inv.id ? <Check size={12} /> : <Copy size={12} />}
-                          {copiedToken === inv.id ? "Copied" : "Copy Token"}
+                          {copiedToken === inv.id ? "Copied" : "Copy Link"}
                         </button>
                       </td>
                       <td style={{ textAlign: "right" }}>
-                        <button
-                          type="button"
-                          className="btn-outline-danger"
-                          style={{ fontSize: "12px", padding: "4px 8px" }}
-                          onClick={() => handleRevokeInvitation(inv.id)}
-                        >
-                          Revoke
-                        </button>
+                        <div style={{ display: "inline-flex", gap: "6px" }}>
+                          <button
+                            type="button"
+                            className="btn-outline"
+                            style={{ fontSize: "12px", padding: "4px 10px" }}
+                            onClick={() => handleResendInvitation(inv.id)}
+                            title="Resend invitation email"
+                          >
+                            Resend
+                          </button>
+                          <button
+                            type="button"
+                            className="btn-outline-danger"
+                            style={{ fontSize: "12px", padding: "4px 8px" }}
+                            onClick={() => handleRevokeInvitation(inv.id)}
+                            title="Revoke invitation"
+                          >
+                            Revoke
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1619,6 +1762,9 @@ export default function Organisation({ token }) {
           </div>
         </div>
       )}
+
+      {/* Modal: Create Organization (renders when "+ New Org" is clicked from any view) */}
+      {renderCreateOrgModal()}
     </div>
   );
 }

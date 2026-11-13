@@ -23,6 +23,7 @@ const PAGE_SUBTITLES = {
   Dashboard: "Here's your sustainability overview for today.",
   "Log Activities": "Log your daily transport, energy, food, and waste footprint.",
   Analytics: "Analyze historical trends, weekly progress, and category distribution.",
+  "Peer Benchmarking": "Compare your carbon footprint and reduction pace against platform cohort averages.",
   Goals: "Track your active carbon reduction targets and daily budgets.",
   Recommendations: "Personalized, high-impact actions suggested by CarbonTrack AI.",
   Achievements: "Celebrate your sustainability milestones and earned badges.",

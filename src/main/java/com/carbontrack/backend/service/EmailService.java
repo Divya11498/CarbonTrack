@@ -95,6 +95,38 @@ public class EmailService {
         return dispatch(user, "WEEKLY_INSIGHTS", refKey, subject, html, true);
     }
 
+    public Map<String, Object> sendOrganizationInvitation(
+            String recipientEmail,
+            com.carbontrack.backend.entity.Organization org,
+            User inviter,
+            String token,
+            String role,
+            String department) {
+
+        String orgName = org != null && org.getName() != null ? org.getName() : "an Organization";
+        String inviterName = inviter != null && inviter.getDisplayName() != null ? inviter.getDisplayName() : "A team administrator";
+        String subject = "You've been invited to join " + orgName + " on CarbonTrack";
+
+        String inviteLink = frontendUrl + "/accept-invite?token=" + token;
+
+        String body = "<p>Hi there,</p>"
+                + "<p><strong>" + escapeHtml(inviterName) + "</strong> has invited you to join <strong>"
+                + escapeHtml(orgName) + "</strong> on CarbonTrack as a <strong>" + escapeHtml(role) + "</strong>"
+                + (department != null && !department.isBlank() ? " (" + escapeHtml(department) + ")" : "")
+                + ".</p>"
+                + "<p>Together, you will collaborate on tracking workforce sustainability, reducing emissions, and achieving collective climate goals.</p>"
+                + "<p style=\"font-size: 13px; color: #5c5549;\">This invitation token is valid for 7 days. If you already have a CarbonTrack account, simply log in and accept.</p>"
+                + "<p style=\"font-size: 12px; color: #888; word-break: break-all;\">Link: " + inviteLink + "</p>";
+
+        String html = wrapLayout("Team Organization Invitation", body, "Accept Invitation & Join Team", inviteLink);
+
+        User inviteUser = new User();
+        inviteUser.setEmail(recipientEmail);
+        inviteUser.setDisplayName("Team Member");
+
+        return dispatch(inviteUser, "ORG_INVITATION", "invitation-" + token, subject, html, false);
+    }
+
     public String renderWelcomeEmail(User user) {
         String name = safeName(user);
         String body = "<p>Hi <strong>" + escapeHtml(name) + "</strong>,</p>"

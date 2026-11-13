@@ -57,6 +57,15 @@ public class AnalyticsController {
         return ResponseEntity.ok(analyticsService.getBenchmarks(user.getId()));
     }
 
+    @GetMapping("/peer-benchmarking")
+    public ResponseEntity<?> getPeerBenchmarking(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(analyticsService.getPeerBenchmarking(user.getId()));
+    }
+
     private User getAuthenticatedUser(Authentication authentication) {
         if (authentication == null || !authentication.isAuthenticated() || authentication.getName() == null) {
             return null;

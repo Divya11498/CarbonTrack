@@ -211,10 +211,10 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
       <div className="page-heading">
         <div>
           <div style={{ display: "inline-flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
-            <h2>AI Recommendations & Insights</h2>
+            <h2>Recommendations & Sustainability Insights</h2>
             <span className="badge-pill-green" style={{ fontSize: "11px", fontWeight: "700" }}>
-              <Sparkles size={12} />
-              {insights?.aiModel || "CarbonTrack AI"}
+              <Lightbulb size={12} />
+              {insights?.aiModel || "CarbonTrack Intelligence"}
             </span>
           </div>
           <p>Personalized climate actions generated from your live carbon emissions data.</p>
@@ -226,10 +226,10 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
             className="btn-secondary"
             onClick={() => loadData(true)}
             disabled={loading || regenerating}
-            title="Re-run AI analysis on your latest telemetry"
+            title="Re-run analysis on your latest telemetry"
           >
             <RefreshCw size={15} className={regenerating ? "animate-spin" : ""} />
-            {regenerating ? "Analyzing Telemetry..." : "Regenerate AI Analysis"}
+            {regenerating ? "Analyzing Telemetry..." : "Regenerate Analysis"}
           </button>
         </div>
       </div>
@@ -257,7 +257,7 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "18px", flexWrap: "wrap", gap: "12px" }}>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
               <div className="icon-badge bg-green" style={{ width: "38px", height: "38px" }}>
-                <Sparkles size={18} />
+                <Lightbulb size={18} />
               </div>
               <div>
                 <h3 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", margin: 0 }}>

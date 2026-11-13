@@ -15,6 +15,7 @@ import com.carbontrack.backend.repository.OrganizationMemberRepository;
 import com.carbontrack.backend.repository.OrganizationRepository;
 import com.carbontrack.backend.repository.UserRepository;
 import com.carbontrack.backend.service.CacheEvictionService;
+import com.carbontrack.backend.service.EmailService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -41,6 +42,7 @@ public class OrganizationController {
     private final GoalRepository goalRepository;
     private final ActivityCategoryRepository categoryRepository;
     private final CacheEvictionService cacheEvictionService;
+    private final EmailService emailService;
 
     public OrganizationController(
             OrganizationRepository organizationRepository,
@@ -50,7 +52,8 @@ public class OrganizationController {
             UserRepository userRepository,
             GoalRepository goalRepository,
             ActivityCategoryRepository categoryRepository,
-            CacheEvictionService cacheEvictionService) {
+            CacheEvictionService cacheEvictionService,
+            EmailService emailService) {
         this.organizationRepository = organizationRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.organizationInvitationRepository = organizationInvitationRepository;
@@ -59,6 +62,7 @@ public class OrganizationController {
         this.goalRepository = goalRepository;
         this.categoryRepository = categoryRepository;
         this.cacheEvictionService = cacheEvictionService;
+        this.emailService = emailService;
     }
 
     // 1. Get current user's organization workspace
@@ -278,6 +282,12 @@ public class OrganizationController {
         );
         organizationInvitationRepository.save(invitation);
 
+        try {
+            emailService.sendOrganizationInvitation(targetEmail, org, user, token, role, department);
+        } catch (Exception e) {
+            // Log but don't fail invitation creation
+        }
+
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "message", "Invitation dispatched successfully",
                 "invitationId", invitation.getId(),
@@ -398,6 +408,140 @@ public class OrganizationController {
 
         organizationInvitationRepository.delete(inv);
         return ResponseEntity.ok(Map.of("message", "Invitation revoked successfully", "id", invitationId));
+    }
+
+    // 9. Resend pending invitation
+    @PostMapping("/{id}/invitations/{invitationId}/resend")
+    public ResponseEntity<?> resendInvitation(
+            @PathVariable Long id,
+            @PathVariable Long invitationId,
+            Authentication authentication) {
+
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        Organization org = organizationRepository.findById(id).orElse(null);
+        if (org == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Organization not found"));
+        }
+
+        OrganizationMember caller = organizationMemberRepository
+                .findByOrganizationIdAndUserId(id, user.getId())
+                .orElse(null);
+
+        if (caller == null || (!"OWNER".equalsIgnoreCase(caller.getRole()) && !"ADMIN".equalsIgnoreCase(caller.getRole()))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Only owners or administrators can resend invitations"));
+        }
+
+        OrganizationInvitation inv = organizationInvitationRepository.findById(invitationId).orElse(null);
+        if (inv == null || !inv.getOrganizationId().equals(id)) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Invitation not found"));
+        }
+
+        inv.setExpiresAt(OffsetDateTime.now().plusDays(7));
+        organizationInvitationRepository.save(inv);
+
+        try {
+            emailService.sendOrganizationInvitation(inv.getEmail(), org, user, inv.getInvitationToken(), inv.getRole(), inv.getDepartment());
+        } catch (Exception e) {
+            // Non-blocking email dispatch
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Invitation resent successfully",
+                "invitationId", inv.getId(),
+                "email", inv.getEmail(),
+                "expiresAt", inv.getExpiresAt()
+        ));
+    }
+
+    // 10. Get public invitation metadata
+    @GetMapping("/invitations/info/{token}")
+    public ResponseEntity<?> getInvitationInfo(@PathVariable String token) {
+        OrganizationInvitation inv = organizationInvitationRepository.findByInvitationToken(token).orElse(null);
+        if (inv == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Invalid or expired invitation token"));
+        }
+        if (inv.getExpiresAt() != null && inv.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "This invitation token has expired"));
+        }
+        if (!"PENDING".equalsIgnoreCase(inv.getStatus())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "This invitation has already been accepted or revoked"));
+        }
+
+        Organization org = organizationRepository.findById(inv.getOrganizationId()).orElse(null);
+        User inviter = inv.getInvitedByUserId() != null ? userRepository.findById(inv.getInvitedByUserId()).orElse(null) : null;
+
+        Map<String, Object> info = new HashMap<>();
+        info.put("organizationName", org != null ? org.getName() : "CarbonTrack Organization");
+        info.put("organizationType", org != null ? org.getOrganizationType() : "COMPANY");
+        info.put("organizationLogo", org != null ? org.getLogoUrl() : null);
+        info.put("role", inv.getRole());
+        info.put("department", inv.getDepartment());
+        info.put("invitedEmail", inv.getEmail());
+        info.put("inviterName", inviter != null ? inviter.getDisplayName() : "A team administrator");
+        info.put("expiresAt", inv.getExpiresAt());
+
+        return ResponseEntity.ok(info);
+    }
+
+    // 11. Accept invitation
+    @PostMapping("/invitations/accept/{token}")
+    public ResponseEntity<?> acceptInvitation(
+            @PathVariable String token,
+            Authentication authentication) {
+
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        OrganizationInvitation inv = organizationInvitationRepository.findByInvitationToken(token).orElse(null);
+        if (inv == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Invalid invitation token"));
+        }
+        if (inv.getExpiresAt() != null && inv.getExpiresAt().isBefore(OffsetDateTime.now())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "This invitation token has expired"));
+        }
+        if (!"PENDING".equalsIgnoreCase(inv.getStatus())) {
+            return ResponseEntity.badRequest().body(Map.of("error", "This invitation has already been processed"));
+        }
+
+        Organization org = organizationRepository.findById(inv.getOrganizationId()).orElse(null);
+        if (org == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Organization not found"));
+        }
+
+        Optional<OrganizationMember> existing = organizationMemberRepository
+                .findByOrganizationIdAndUserId(inv.getOrganizationId(), user.getId());
+
+        if (existing.isPresent()) {
+            inv.setStatus("ACCEPTED");
+            organizationInvitationRepository.save(inv);
+            return ResponseEntity.ok(Map.of(
+                    "message", "You are already a member of " + org.getName(),
+                    "organizationId", org.getId()
+            ));
+        }
+
+        OrganizationMember newMember = new OrganizationMember(
+                inv.getOrganizationId(),
+                user.getId(),
+                inv.getRole() != null ? inv.getRole() : "MEMBER",
+                inv.getDepartment() != null ? inv.getDepartment() : "General"
+        );
+        organizationMemberRepository.save(newMember);
+
+        inv.setStatus("ACCEPTED");
+        organizationInvitationRepository.save(inv);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Welcome to " + org.getName() + "! You have joined as a " + newMember.getRole() + ".",
+                "organizationId", org.getId()
+        ));
     }
 
     // Helper: Build comprehensive organization view response

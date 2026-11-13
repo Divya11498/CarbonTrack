@@ -113,6 +113,7 @@ public class SecurityConfig {
                         .requestMatchers("/", "/api/health", "/error").permitAll()
                         .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers("/api/organizations/invitations/info/**").permitAll()
                         .requestMatchers("/api/activities", "/api/activities/**").authenticated()
                         .requestMatchers("/api/emission-factors/**").authenticated()
                         .requestMatchers("/api/notifications/**").authenticated()

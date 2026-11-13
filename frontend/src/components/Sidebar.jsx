@@ -9,7 +9,8 @@ import {
   Settings,
   LogOut,
   Award,
-  Sparkles,
+  Lightbulb,
+  Scale,
   PanelLeftClose,
   PanelLeftOpen,
   X,
@@ -24,11 +25,12 @@ const NAV_ITEMS = [
   { id: "Dashboard", label: "Dashboard", icon: LayoutDashboard },
   { id: "Log Activities", label: "Activity Logging", icon: PlusCircle },
   { id: "Analytics", label: "Analytics", icon: BarChart3 },
+  { id: "Peer Benchmarking", label: "Peer Benchmarking", icon: Scale },
   { id: "Goals", label: "Goals", icon: Target },
   { id: "Achievements", label: "Achievements", icon: Award },
   { id: "Leaderboard", label: "Leaderboard", icon: Trophy },
   { id: "Organisation", label: "Organization", icon: Building2 },
-  { id: "Recommendations", label: "AI Recommendations", icon: Sparkles },
+  { id: "Recommendations", label: "Recommendations", icon: Lightbulb },
 ];
 
 export default function Sidebar({

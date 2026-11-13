@@ -280,6 +280,152 @@ public class AnalyticsService {
         return result;
     }
 
+    @Cacheable(value = CacheConfig.CACHE_ANALYTICS_BENCHMARKS, key = "'peer:' + #userId")
+    public Map<String, Object> getPeerBenchmarking(Long userId) {
+        LocalDate today = LocalDate.now();
+        LocalDate monthStart = today.withDayOfMonth(1);
+        List<ActivityLog> allLogs = activityLogRepository.findAll();
+
+        Map<Long, List<ActivityLog>> logsByUserThisMonth = new HashMap<>();
+        Map<Long, BigDecimal> userMonthlyTotals = new HashMap<>();
+
+        for (ActivityLog log : allLogs) {
+            if (log.getLogDate() != null && !log.getLogDate().isBefore(monthStart) && !log.getLogDate().isAfter(today)) {
+                logsByUserThisMonth.computeIfAbsent(log.getUserId(), k -> new ArrayList<>()).add(log);
+                userMonthlyTotals.merge(log.getUserId(), safeCo2(log), BigDecimal::add);
+            }
+        }
+
+        int totalParticipants = userMonthlyTotals.size();
+        if (totalParticipants < 2) {
+            Map<String, Object> emptyResp = new HashMap<>();
+            emptyResp.put("insufficientData", true);
+            emptyResp.put("totalParticipants", totalParticipants);
+            emptyResp.put("message", "Peer benchmarking will become available as more users join and contribute activity data.");
+            BigDecimal userTotal = userMonthlyTotals.getOrDefault(userId, BigDecimal.ZERO);
+            emptyResp.put("userTotalFootprintKg", userTotal.setScale(2, RoundingMode.HALF_UP));
+            emptyResp.put("platformAverageFootprintKg", userTotal.setScale(2, RoundingMode.HALF_UP));
+            emptyResp.put("userPercentile", 50);
+            emptyResp.put("categoryComparison", List.of());
+            emptyResp.put("monthlyComparison", List.of());
+            return emptyResp;
+        }
+
+        BigDecimal userTotal = userMonthlyTotals.getOrDefault(userId, BigDecimal.ZERO);
+
+        BigDecimal platformSum = userMonthlyTotals.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal platformAvg = platformSum.divide(BigDecimal.valueOf(totalParticipants), 2, RoundingMode.HALF_UP);
+
+        long higherEmissionsCount = userMonthlyTotals.values().stream().filter(val -> val.compareTo(userTotal) > 0).count();
+        long equalEmissionsCount = userMonthlyTotals.values().stream().filter(val -> val.compareTo(userTotal) == 0).count();
+        int percentile = (int) Math.round(((higherEmissionsCount + (equalEmissionsCount * 0.5)) / (double) totalParticipants) * 100.0);
+        percentile = Math.max(1, Math.min(99, percentile));
+
+        String percentileMessage = String.format("Your carbon footprint is lower than %d%% of active users this month.", percentile);
+
+        Map<Short, ActivityCategory> catMap = categoryMap();
+        Map<String, BigDecimal> userCategoryTotals = new HashMap<>();
+        Map<String, BigDecimal> platformCategorySums = new HashMap<>();
+
+        for (Map.Entry<Long, List<ActivityLog>> entry : logsByUserThisMonth.entrySet()) {
+            Long uid = entry.getKey();
+            boolean isCurrentUser = uid.equals(userId);
+            Map<String, BigDecimal> thisUserCatTotals = new HashMap<>();
+            for (ActivityLog l : entry.getValue()) {
+                ActivityCategory c = catMap.get(l.getCategoryId());
+                String cName = c != null ? capitalize(c.getName()) : "Other";
+                BigDecimal co2 = safeCo2(l);
+                thisUserCatTotals.merge(cName, co2, BigDecimal::add);
+                if (isCurrentUser) {
+                    userCategoryTotals.merge(cName, co2, BigDecimal::add);
+                }
+            }
+            for (Map.Entry<String, BigDecimal> catEntry : thisUserCatTotals.entrySet()) {
+                platformCategorySums.merge(catEntry.getKey(), catEntry.getValue(), BigDecimal::add);
+            }
+        }
+
+        List<String> standardCategories = List.of("Transport", "Electricity", "Food", "Shopping", "Waste");
+        List<Map<String, Object>> categoryComparison = new ArrayList<>();
+        String highestEmissionCategory = "None";
+        BigDecimal maxCatEmissions = BigDecimal.ZERO;
+
+        for (String cat : standardCategories) {
+            BigDecimal uKg = userCategoryTotals.getOrDefault(cat, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal pSum = platformCategorySums.getOrDefault(cat, BigDecimal.ZERO);
+            BigDecimal pAvg = pSum.divide(BigDecimal.valueOf(totalParticipants), 2, RoundingMode.HALF_UP);
+
+            if (uKg.compareTo(maxCatEmissions) > 0) {
+                maxCatEmissions = uKg;
+                highestEmissionCategory = cat;
+            }
+
+            Double diffPct = null;
+            if (pAvg.compareTo(BigDecimal.ZERO) > 0) {
+                diffPct = BigDecimal.valueOf(((uKg.doubleValue() - pAvg.doubleValue()) / pAvg.doubleValue()) * 100.0)
+                        .setScale(1, RoundingMode.HALF_UP).doubleValue();
+            }
+
+            Map<String, Object> catMapItem = new HashMap<>();
+            catMapItem.put("category", cat);
+            catMapItem.put("userKg", uKg);
+            catMapItem.put("platformAvgKg", pAvg);
+            catMapItem.put("diffPercent", diffPct);
+            catMapItem.put("status", uKg.compareTo(pAvg) <= 0 ? "LOWER" : "HIGHER");
+            categoryComparison.add(catMapItem);
+        }
+
+        List<Map<String, Object>> monthlyComparison = new ArrayList<>();
+        DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("MMM yyyy");
+        LocalDate currentMonthStart = today.withDayOfMonth(1);
+
+        for (int i = 5; i >= 0; i--) {
+            LocalDate mStart = currentMonthStart.minusMonths(i);
+            LocalDate mEnd = mStart.plusMonths(1).minusDays(1);
+
+            List<ActivityLog> mLogs = allLogs.stream()
+                    .filter(l -> l.getLogDate() != null && !l.getLogDate().isBefore(mStart) && !l.getLogDate().isAfter(mEnd))
+                    .toList();
+
+            Map<Long, BigDecimal> mUserSums = new HashMap<>();
+            for (ActivityLog l : mLogs) {
+                mUserSums.merge(l.getUserId(), safeCo2(l), BigDecimal::add);
+            }
+
+            BigDecimal mUserKg = mUserSums.getOrDefault(userId, BigDecimal.ZERO).setScale(2, RoundingMode.HALF_UP);
+            BigDecimal mPlatformAvg = mUserSums.isEmpty() ? BigDecimal.ZERO :
+                    mUserSums.values().stream().reduce(BigDecimal.ZERO, BigDecimal::add)
+                            .divide(BigDecimal.valueOf(Math.max(1, mUserSums.size())), 2, RoundingMode.HALF_UP);
+
+            Map<String, Object> mPoint = new HashMap<>();
+            mPoint.put("month", mStart.format(monthFmt));
+            mPoint.put("userKg", mUserKg);
+            mPoint.put("platformAvgKg", mPlatformAvg);
+            monthlyComparison.add(mPoint);
+        }
+
+        Double overallDiffPct = null;
+        if (platformAvg.compareTo(BigDecimal.ZERO) > 0) {
+            overallDiffPct = BigDecimal.valueOf(((userTotal.doubleValue() - platformAvg.doubleValue()) / platformAvg.doubleValue()) * 100.0)
+                    .setScale(1, RoundingMode.HALF_UP).doubleValue();
+        }
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("insufficientData", false);
+        result.put("totalParticipants", totalParticipants);
+        result.put("userTotalFootprintKg", userTotal.setScale(2, RoundingMode.HALF_UP));
+        result.put("platformAverageFootprintKg", platformAvg);
+        result.put("userPercentile", percentile);
+        result.put("percentileMessage", percentileMessage);
+        result.put("highestEmissionCategory", highestEmissionCategory);
+        result.put("categoryComparison", categoryComparison);
+        result.put("monthlyComparison", monthlyComparison);
+        result.put("reductionPerformance", overallDiffPct);
+        result.put("status", userTotal.compareTo(platformAvg) <= 0 ? "BETTER_THAN_AVERAGE" : "ABOVE_AVERAGE");
+
+        return result;
+    }
+
     public LocalDate[] resolveDateRange(String period, String startDateStr, String endDateStr) {
         LocalDate today = LocalDate.now();
         String p = period == null ? "30d" : period.trim().toLowerCase();

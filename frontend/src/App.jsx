@@ -14,6 +14,7 @@ import AuthModal from "./auth/AuthModal";
 import Dashboard from "./pages/Dashboard";
 import Activities from "./pages/Activities";
 import Analytics from "./pages/Analytics";
+import PeerBenchmarking from "./pages/PeerBenchmarking";
 import Goals from "./pages/Goals";
 import Recommendations from "./pages/Recommendations";
 import Leaderboard from "./pages/Leaderboard";
@@ -459,6 +460,10 @@ export default function App() {
               <Analytics token={token} />
             )}
 
+            {activePage === "Peer Benchmarking" && (
+              <PeerBenchmarking token={token} onNavigate={setActivePage} />
+            )}
+
             {activePage === "Goals" && (
               <Goals
                 token={token}
@@ -485,6 +490,7 @@ export default function App() {
                 activities={activities}
                 token={token}
                 onNavigate={setActivePage}
+                userName={userName}
               />
             )}
 

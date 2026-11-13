@@ -16,8 +16,11 @@ import {
   ArrowRight,
   Shield,
   Medal,
+  Share2,
 } from "lucide-react";
 import { apiRequest } from "../api";
+import BadgeCelebrationModal from "./BadgeCelebrationModal";
+import BadgeShareModal from "./BadgeShareModal";
 
 const CATEGORY_MAP = {
   week_warrior: "Consistency",
@@ -49,12 +52,16 @@ const BADGE_VISUALS = {
   sustainability_champion: { icon: Award, color: "#79688F", bg: "#ECE7F3", shape: "emblem" },
 };
 
-export default function Achievements({ token, onNavigate }) {
+export default function Achievements({ token, onNavigate, userName }) {
   const [badges, setBadges] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [categoryTab, setCategoryTab] = useState("ALL");
   const [statusFilter, setStatusFilter] = useState("ALL");
+  const [celebratingBadge, setCelebratingBadge] = useState(null);
+  const [sharingBadge, setSharingBadge] = useState(null);
+
+  const resolvedUserName = userName || localStorage.getItem("carbontrack_userName") || "Eco Champion";
 
   useEffect(() => {
     async function loadBadges() {
@@ -68,6 +75,23 @@ export default function Achievements({ token, onNavigate }) {
         const res = await apiRequest("/api/badges/mine", { token });
         if (Array.isArray(res)) {
           setBadges(res);
+
+          // Check for newly unlocked badges that have not been celebrated yet
+          try {
+            const celebratedRaw = localStorage.getItem("carbontrack_celebrated_badges");
+            const celebratedList = celebratedRaw ? JSON.parse(celebratedRaw) : [];
+            const newlyUnlocked = res.find(
+              (b) => b.unlocked && !celebratedList.includes(b.code || String(b.id))
+            );
+
+            if (newlyUnlocked) {
+              setCelebratingBadge(newlyUnlocked);
+              const updatedList = [...celebratedList, newlyUnlocked.code || String(newlyUnlocked.id)];
+              localStorage.setItem("carbontrack_celebrated_badges", JSON.stringify(updatedList));
+            }
+          } catch {
+            // LocalStorage fallback
+          }
         }
       } catch (err) {
         setError(err.message || "Unable to fetch achievements.");
@@ -459,9 +483,31 @@ export default function Achievements({ token, onNavigate }) {
                       }}
                     />
                   </div>
-                  {b.unlocked && b.earnedAt && (
-                    <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", marginTop: "8px" }}>
-                      Earned on {new Date(b.earnedAt).toLocaleDateString()}
+                  {b.unlocked && (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "10px", paddingTop: "8px", borderTop: "1px solid var(--border-subtle)" }}>
+                      <span style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>
+                        {b.earnedAt ? `Earned ${new Date(b.earnedAt).toLocaleDateString()}` : "Milestone Unlocked"}
+                      </span>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSharingBadge(b);
+                        }}
+                        style={{
+                          fontSize: "0.76rem",
+                          padding: "4px 10px",
+                          borderRadius: "6px",
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: "4px",
+                        }}
+                        title="Share this achievement"
+                      >
+                        <Share2 size={12} />
+                        <span>Share</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -469,6 +515,27 @@ export default function Achievements({ token, onNavigate }) {
             );
           })}
         </div>
+      )}
+
+      {/* Celebration Modal when unlocking a badge */}
+      {celebratingBadge && (
+        <BadgeCelebrationModal
+          badge={celebratingBadge}
+          onShare={(b) => {
+            setCelebratingBadge(null);
+            setSharingBadge(b);
+          }}
+          onClose={() => setCelebratingBadge(null)}
+        />
+      )}
+
+      {/* Share Badge Modal */}
+      {sharingBadge && (
+        <BadgeShareModal
+          badge={sharingBadge}
+          userName={resolvedUserName}
+          onClose={() => setSharingBadge(null)}
+        />
       )}
     </div>
   );
