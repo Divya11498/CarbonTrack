@@ -1,193 +1,405 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import {
+  Menu,
   Sun,
   Moon,
   Bell,
-  UserRound,
-  LogOut,
+  Bot,
+  User,
   Settings,
-  ChevronDown,
-  Menu,
-  CheckCircle2,
+  LogOut,
   Sparkles,
+  Award,
+  Target,
+  BarChart3,
+  Shield,
+  Check,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { apiRequest } from "../api";
+import UserAvatar from "./UserAvatar";
+
+const PAGE_SUBTITLES = {
+  Dashboard: "Here's your sustainability overview for today.",
+  "Log Activities": "Log your daily transport, energy, food, and waste footprint.",
+  Analytics: "Analyze historical trends, weekly progress, and category distribution.",
+  Goals: "Track your active carbon reduction targets and daily budgets.",
+  Recommendations: "Personalized, high-impact actions suggested by CarbonTrack AI.",
+  Achievements: "Celebrate your sustainability milestones and earned badges.",
+  Leaderboard: "See where your eco-progress ranks across the community.",
+  Organisation: "Enterprise carbon reporting and departmental breakdowns.",
+  Profile: "Manage your personal lifestyle baseline and credentials.",
+  Settings: "Configure measurement units, email digests, and privacy options.",
+};
 
 export default function Header({
-  userName = "User",
+  activePage = "Dashboard",
+  userName = "",
+  userEmail = "",
   avatarUrl = "",
+  avatarSeed = "",
+  userRole = "Member",
+  token = "",
   onNavigate,
   onLogout,
   onToggleMobileSidebar,
+  onOpenAiChat,
 }) {
   const { isDark, toggleTheme } = useTheme();
-  const [dropdownOpen, setDropdownOpen] = useState(false);
-  const [notificationsOpen, setNotificationsOpen] = useState(false);
-  const dropdownRef = useRef(null);
-  const notificationRef = useRef(null);
 
-  const getGreeting = () => {
-    const hour = new Date().getHours();
-    if (hour < 12) return "Good morning";
-    if (hour < 18) return "Good afternoon";
-    return "Good evening";
-  };
+  // Dropdown states
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [notifsOpen, setNotifsOpen] = useState(false);
+  const [notifications, setNotifications] = useState([]);
+  const [markingAll, setMarkingAll] = useState(false);
 
+  const profileRef = useRef(null);
+  const notifsRef = useRef(null);
+
+  // Compute local time-based personalized greeting derived during render
+  const hour = new Date().getHours();
+  let timeGreeting = "Good morning";
+  if (hour >= 12 && hour < 17) {
+    timeGreeting = "Good afternoon";
+  } else if (hour >= 17 || hour < 5) {
+    timeGreeting = "Good evening";
+  }
+  const cleanName =
+    userName && userName.trim() && userName !== "User" && userName !== "Eco Champion"
+      ? userName.trim().split(" ")[0]
+      : "";
+  const greetingText = cleanName ? `${timeGreeting}, ${cleanName}!` : `${timeGreeting}!`;
+
+  // Fetch real notifications from backend on mount or page change
+  useEffect(() => {
+    let isMounted = true;
+    if (!token) return;
+
+    apiRequest("/api/notifications", { token })
+      .then((res) => {
+        if (isMounted && Array.isArray(res?.notifications)) {
+          setNotifications(res.notifications);
+        }
+      })
+      .catch(() => {
+        // Non-blocking
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token, activePage]);
+
+  // Click outside listener to close dropdowns
   useEffect(() => {
     function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setDropdownOpen(false);
+      if (profileRef.current && !profileRef.current.contains(event.target)) {
+        setProfileOpen(false);
       }
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setNotificationsOpen(false);
+      if (notifsRef.current && !notifsRef.current.contains(event.target)) {
+        setNotifsOpen(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
   }, []);
+
+  // Mark single notification as read
+  const handleMarkAsRead = async (id) => {
+    try {
+      await apiRequest(`/api/notifications/${id}/read`, {
+        method: "POST",
+        token,
+      });
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+    } catch {
+      // Fall back to optimistic update
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
+      );
+    }
+  };
+
+  // Mark all notifications as read
+  const handleMarkAllRead = async () => {
+    setMarkingAll(true);
+    try {
+      await apiRequest("/api/notifications/read-all", {
+        method: "POST",
+        token,
+      });
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } catch {
+      setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  const unreadCount = notifications.filter((n) => !n.isRead).length;
+
+  const subtitle =
+    PAGE_SUBTITLES[activePage] || "Track your carbon footprint and build sustainable habits.";
+
+  const getNotifIcon = (type = "") => {
+    const t = String(type).toUpperCase();
+    if (t.includes("ACHIEVEMENT") || t.includes("BADGE")) {
+      return <Award size={16} className="notif-type-icon notif-award" />;
+    }
+    if (t.includes("GOAL")) {
+      return <Target size={16} className="notif-type-icon notif-goal" />;
+    }
+    if (t.includes("WEEKLY")) {
+      return <BarChart3 size={16} className="notif-type-icon notif-weekly" />;
+    }
+    return <Sparkles size={16} className="notif-type-icon notif-sparkle" />;
+  };
 
   return (
     <header className="dashboard-header">
+      {/* Left Column: Mobile Menu Toggle & Personalized Greeting */}
       <div className="header-left">
+        {/* Mobile Drawer Menu Toggle */}
         <button
           type="button"
           className="mobile-menu-btn"
           onClick={onToggleMobileSidebar}
-          aria-label="Toggle navigation drawer"
+          aria-label="Open navigation menu"
+          title="Open menu"
         >
           <Menu size={22} />
         </button>
 
-        <div className="header-greeting">
-          <h2>
-            {getGreeting()}, <span className="greeting-name">{userName}</span>
-          </h2>
+        <div className="header-greeting-wrap">
+          <h1 className="header-greeting-title">{greetingText}</h1>
+          <p className="header-greeting-subtitle">{subtitle}</p>
         </div>
       </div>
 
+      {/* Right Column: Actions (AI Coach, Theme, Notifications, Profile) */}
       <div className="header-right">
-        {/* Light / Dark Mode Toggle */}
-        <button
-          type="button"
-          className="header-action-btn theme-toggle"
-          onClick={toggleTheme}
-          title={isDark ? "Switch to light mode" : "Switch to dark mode"}
-          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
-        >
-          {isDark ? <Sun size={20} className="text-lime" /> : <Moon size={20} />}
-        </button>
-
-        {/* Notifications Dropdown */}
-        <div className="header-dropdown-wrap" ref={notificationRef}>
+        {/* Ask AI Assistant */}
+        {onOpenAiChat && (
           <button
             type="button"
-            className="header-action-btn notification-btn"
-            onClick={() => {
-              setNotificationsOpen(!notificationsOpen);
-              setDropdownOpen(false);
-            }}
-            title="Notifications"
-            aria-label="Notifications"
+            className="header-ai-btn"
+            onClick={onOpenAiChat}
+            title="Ask CarbonTrack AI Assistant"
+            aria-label="Ask CarbonTrack AI Assistant"
           >
-            <Bell size={20} />
-            <span className="notification-badge-dot"></span>
+            <Bot size={17} />
+            <span className="header-ai-label">AI Coach</span>
+          </button>
+        )}
+
+        {/* Theme Toggle Button */}
+        <button
+          type="button"
+          className="theme-toggle-btn"
+          onClick={toggleTheme}
+          title={isDark ? "Switch to light theme" : "Switch to dark theme"}
+          aria-label={isDark ? "Switch to light theme" : "Switch to dark theme"}
+        >
+          {isDark ? <Sun size={18} /> : <Moon size={18} />}
+        </button>
+
+        {/* Notification Bell & Dropdown */}
+        <div className="header-notif-wrap" ref={notifsRef}>
+          <button
+            type="button"
+            className={`header-icon-btn ${notifsOpen ? "active" : ""}`}
+            onClick={() => {
+              setNotifsOpen((prev) => !prev);
+              setProfileOpen(false);
+            }}
+            aria-label="View notifications"
+            title="Notifications"
+          >
+            <Bell size={18} />
+            {unreadCount > 0 && (
+              <span className="notif-badge-count">
+                {unreadCount > 9 ? "9+" : unreadCount}
+              </span>
+            )}
           </button>
 
-          {notificationsOpen && (
-            <div className="notification-popover">
-              <div className="popover-header">
-                <h4>Notifications</h4>
-                <span className="badge-pill-green">2 New</span>
+          {notifsOpen && (
+            <div className="notif-dropdown-panel" role="dialog" aria-label="Notifications Panel">
+              <div className="notif-panel-header">
+                <div className="notif-header-title">
+                  <strong>Notifications</strong>
+                  {unreadCount > 0 ? (
+                    <span className="notif-unread-pill">{unreadCount} new</span>
+                  ) : (
+                    <span className="notif-caught-pill">All caught up</span>
+                  )}
+                </div>
+
+                {unreadCount > 0 && (
+                  <button
+                    type="button"
+                    className="notif-mark-all-btn"
+                    onClick={handleMarkAllRead}
+                    disabled={markingAll}
+                  >
+                    <Check size={13} />
+                    <span>Mark all read</span>
+                  </button>
+                )}
               </div>
-              <div className="notification-list">
-                <div className="notification-item unread">
-                  <div className="notif-icon bg-emerald">
-                    <Sparkles size={16} />
+
+              <div className="notif-panel-list">
+                {notifications.length === 0 ? (
+                  <div className="notif-empty-state">
+                    <Sparkles size={26} className="notif-empty-icon" />
+                    <h4>You're all caught up!</h4>
+                    <p>Milestone badges, reduction achievements, and weekly digests will appear here.</p>
                   </div>
-                  <div className="notif-content">
-                    <p className="notif-title">Weekly Goal On Track!</p>
-                    <p className="notif-time">You reduced transport CO₂e by 18% this week.</p>
-                  </div>
-                </div>
-                <div className="notification-item">
-                  <div className="notif-icon bg-green">
-                    <CheckCircle2 size={16} />
-                  </div>
-                  <div className="notif-content">
-                    <p className="notif-title">New Achievement Unlocked</p>
-                    <p className="notif-time">You earned the 'Eco Pioneer' badge.</p>
-                  </div>
-                </div>
+                ) : (
+                  notifications.map((n) => (
+                    <div
+                      key={n.id}
+                      className={`notif-card-item ${!n.isRead ? "unread" : "read"}`}
+                      onClick={() => handleMarkAsRead(n.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => e.key === "Enter" && handleMarkAsRead(n.id)}
+                    >
+                      <div className="notif-icon-col">
+                        {getNotifIcon(n.notificationType)}
+                      </div>
+
+                      <div className="notif-body-col">
+                        <div className="notif-body-top">
+                          <strong className="notif-subject">{n.subject}</strong>
+                          {!n.isRead && <span className="notif-unread-dot" title="Unread" />}
+                        </div>
+                        <p className="notif-desc">
+                          {n.message || (n.notificationType ? n.notificationType.replace(/_/g, " ") : "System notice")}
+                        </p>
+                        <span className="notif-timestamp">
+                          {n.createdAt ? new Date(n.createdAt).toLocaleDateString(undefined, {
+                            month: "short",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          }) : "Recent"}
+                        </span>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
           )}
         </div>
 
-        {/* User Profile Dropdown */}
-        <div className="header-dropdown-wrap" ref={dropdownRef}>
+        {/* Profile Pill & Dropdown */}
+        <div className="header-profile-wrap" ref={profileRef}>
           <button
             type="button"
-            className="header-user-btn"
+            className={`header-user-pill ${profileOpen ? "active" : ""}`}
             onClick={() => {
-              setDropdownOpen(!dropdownOpen);
-              setNotificationsOpen(false);
+              setProfileOpen((prev) => !prev);
+              setNotifsOpen(false);
             }}
-            aria-expanded={dropdownOpen}
+            aria-label="User account menu"
+            title={userName ? `Signed in as ${userName}` : "Account"}
           >
-            <div className="header-avatar">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={userName} className="avatar-img" />
-              ) : (
-                <span className="avatar-initials">
-                  {userName.charAt(0).toUpperCase()}
-                </span>
-              )}
+            <UserAvatar
+              src={avatarUrl}
+              seed={avatarSeed || userEmail || userName}
+              email={userEmail}
+              name={userName}
+              size={32}
+            />
+            <div className="header-user-meta">
+              <span className="header-user-name">{userName || "Eco Champion"}</span>
+              <span className="header-user-role">{userRole || "Member"}</span>
             </div>
-            <span className="header-user-name">{userName}</span>
-            <ChevronDown size={15} className={`chevron-icon ${dropdownOpen ? "rotate" : ""}`} />
           </button>
 
-          {dropdownOpen && (
-            <div className="user-dropdown-menu">
-              <div className="dropdown-user-header">
-                <strong>{userName}</strong>
-                <span>Personal Account</span>
+          {profileOpen && (
+            <div className="profile-dropdown-menu" role="menu">
+              {/* User Summary Header */}
+              <div className="profile-dropdown-header">
+                <UserAvatar
+                  src={avatarUrl}
+                  seed={avatarSeed || userEmail || userName}
+                  email={userEmail}
+                  name={userName}
+                  size={42}
+                />
+                <div className="profile-dropdown-info">
+                  <strong className="profile-info-name">{userName || "Eco Champion"}</strong>
+                  <span className="profile-info-email">{userEmail || "user@carbontrack"}</span>
+                  <span className="profile-info-role-badge">
+                    <Shield size={11} /> {userRole || "Member"}
+                  </span>
+                </div>
               </div>
-              <div className="dropdown-divider"></div>
-              <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => {
-                  setDropdownOpen(false);
-                  onNavigate("Profile");
-                }}
-              >
-                <UserRound size={17} />
-                <span>My Profile</span>
-              </button>
-              <button
-                type="button"
-                className="dropdown-item"
-                onClick={() => {
-                  setDropdownOpen(false);
-                  onNavigate("Settings");
-                }}
-              >
-                <Settings size={17} />
-                <span>Settings</span>
-              </button>
-              <div className="dropdown-divider"></div>
-              <button
-                type="button"
-                className="dropdown-item text-danger"
-                onClick={() => {
-                  setDropdownOpen(false);
-                  onLogout();
-                }}
-              >
-                <LogOut size={17} />
-                <span>Log out</span>
-              </button>
+
+              <div className="profile-dropdown-divider" />
+
+              {/* Menu Actions */}
+              <div className="profile-dropdown-items">
+                <button
+                  type="button"
+                  className="profile-menu-item"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onNavigate("Profile");
+                  }}
+                  role="menuitem"
+                >
+                  <User size={16} />
+                  <span>View Profile & Avatar</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="profile-menu-item"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    onNavigate("Settings");
+                  }}
+                  role="menuitem"
+                >
+                  <Settings size={16} />
+                  <span>Account Settings</span>
+                </button>
+
+                <button
+                  type="button"
+                  className="profile-menu-item"
+                  onClick={() => {
+                    toggleTheme();
+                  }}
+                  role="menuitem"
+                >
+                  {isDark ? <Sun size={16} /> : <Moon size={16} />}
+                  <span>Theme: <strong>{isDark ? "Dark" : "Light"}</strong></span>
+                </button>
+
+                <div className="profile-dropdown-divider" />
+
+                <button
+                  type="button"
+                  className="profile-menu-item logout-item"
+                  onClick={() => {
+                    setProfileOpen(false);
+                    if (onLogout) onLogout();
+                  }}
+                  role="menuitem"
+                >
+                  <LogOut size={16} />
+                  <span>Sign Out</span>
+                </button>
+              </div>
             </div>
           )}
         </div>

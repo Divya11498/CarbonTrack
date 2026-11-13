@@ -9,10 +9,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 // Public & Auth Pages
 import LandingPage from "./pages/LandingPage";
 import AuthModal from "./auth/AuthModal";
-import Login from "./auth/Login";
-import Register from "./auth/Register";
-import ForgotPassword from "./auth/ForgotPassword";
-import ResetPassword from "./auth/ResetPassword";
 
 // Authenticated Pages
 import Dashboard from "./pages/Dashboard";
@@ -84,8 +80,26 @@ export default function App() {
   // Navigation states
   const [activePage, setActivePage] = useState("Dashboard");
   const [authModal, setAuthModal] = useState({ open: false, mode: "login" });
-  const [resetToken, setResetToken] = useState("");
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem("carbontrack_sidebar_collapsed") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const handleToggleSidebarCollapse = useCallback(() => {
+    setSidebarCollapsed((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("carbontrack_sidebar_collapsed", String(next));
+      } catch {
+        // Safe fallback
+      }
+      return next;
+    });
+  }, []);
 
   // Authentication session states
   const [token, setToken] = useState(
@@ -104,9 +118,13 @@ export default function App() {
     () => sessionStorage.getItem("carbontrack_avatarUrl") || localStorage.getItem("carbontrack_avatarUrl") || ""
   );
 
+  const [userRole, setUserRole] = useState(
+    () => sessionStorage.getItem("carbontrack_role") || localStorage.getItem("carbontrack_role") || "USER"
+  );
+
   const [authError, setAuthError] = useState("");
   const [activities, setActivities] = useState([]);
-  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [, setActivitiesLoading] = useState(false);
   const [summaryData, setSummaryData] = useState(null);
   const [monthlyTarget, setMonthlyTarget] = useState(200);
 
@@ -146,11 +164,13 @@ export default function App() {
     sessionStorage.removeItem("carbontrack_email");
     sessionStorage.removeItem("carbontrack_userName");
     sessionStorage.removeItem("carbontrack_avatarUrl");
+    sessionStorage.removeItem("carbontrack_role");
 
     localStorage.removeItem("carbontrack_token");
     localStorage.removeItem("carbontrack_email");
     localStorage.removeItem("carbontrack_userName");
     localStorage.removeItem("carbontrack_avatarUrl");
+    localStorage.removeItem("carbontrack_role");
 
     try {
       ["placeprep_token", "placeprep_email", "placeprep_user"].forEach((k) => {
@@ -165,6 +185,7 @@ export default function App() {
     setEmail("");
     setUserName("User");
     setAvatarUrl("");
+    setUserRole("USER");
     setActivities([]);
     setSummaryData(null);
     setAuthModal({ open: false, mode: "login" });
@@ -206,6 +227,10 @@ export default function App() {
           setAvatarUrl(profile.value.avatarUrl);
           sessionStorage.setItem("carbontrack_avatarUrl", profile.value.avatarUrl);
         }
+        if (profile.value.role) {
+          setUserRole(profile.value.role);
+          sessionStorage.setItem("carbontrack_role", profile.value.role);
+        }
       }
     } catch (error) {
       if (error.message?.includes("expired") || error.message?.includes("401")) {
@@ -219,9 +244,11 @@ export default function App() {
   }, [token]);
 
   useEffect(() => {
-    if (token) {
+    if (!token) return undefined;
+    const timer = setTimeout(() => {
       loadUserData();
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [token, loadUserData]);
 
   // Handle successful login
@@ -365,25 +392,35 @@ export default function App() {
   // AUTHENTICATED APPLICATION WORKSPACE
   // ==========================================
   return (
-    <div className="app-layout">
+    <div className={`app-layout ${sidebarCollapsed ? "sidebar-collapsed" : ""}`}>
       {/* Sidebar Navigation */}
       <Sidebar
         activePage={activePage}
         onNavigate={setActivePage}
         userName={userName}
+        userEmail={email}
         avatarUrl={avatarUrl}
+        userRole={userRole}
         onLogout={handleLogout}
+        onOpenAiChat={() => handleOpenAiChat("")}
         mobileOpen={mobileSidebarOpen}
         onCloseMobile={() => setMobileSidebarOpen(false)}
+        collapsed={sidebarCollapsed}
+        onToggleCollapse={handleToggleSidebarCollapse}
       />
 
       <div className="app-main-wrapper">
         {/* Dashboard Header */}
         <Header
+          activePage={activePage}
+          token={token}
           userName={userName}
+          userEmail={email}
           avatarUrl={avatarUrl}
+          userRole={userRole}
           onNavigate={setActivePage}
           onLogout={handleLogout}
+          onOpenAiChat={() => handleOpenAiChat("")}
           onToggleMobileSidebar={() => setMobileSidebarOpen(!mobileSidebarOpen)}
         />
 
@@ -414,6 +451,7 @@ export default function App() {
                 onUpdateActivity={handleUpdateActivity}
                 onDeleteActivity={handleDeleteActivity}
                 token={token}
+                userRole={userRole}
               />
             )}
 
@@ -439,13 +477,14 @@ export default function App() {
             )}
 
             {activePage === "Leaderboard" && (
-              <Leaderboard token={token} />
+              <Leaderboard token={token} onNavigate={setActivePage} />
             )}
 
             {activePage === "Achievements" && (
               <Achievements
                 activities={activities}
                 token={token}
+                onNavigate={setActivePage}
               />
             )}
 
@@ -456,6 +495,7 @@ export default function App() {
             {activePage === "Profile" && (
               <Profile
                 token={token}
+                userEmail={email}
                 onProfileUpdated={({ displayName, avatarUrl: newAvatar }) => {
                   if (displayName) setUserName(displayName);
                   if (newAvatar) setAvatarUrl(newAvatar);
@@ -464,7 +504,7 @@ export default function App() {
             )}
 
             {activePage === "Settings" && (
-              <Settings activities={activities} />
+              <Settings token={token} userEmail={email} activities={activities} />
             )}
           </ErrorBoundary>
         </main>

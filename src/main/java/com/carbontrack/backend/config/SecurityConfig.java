@@ -59,7 +59,9 @@ public class SecurityConfig {
                 List.of(
                         "http://localhost:5173",
                         "http://localhost:5174",
-                        "http://localhost:3000"
+                        "http://localhost:3000",
+                        "http://localhost:80",
+                        "http://localhost"
                 )
         );
 
@@ -109,8 +111,12 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/", "/api/health", "/error").permitAll()
+                        .requestMatchers("/v3/api-docs/**", "/swagger-ui/**", "/swagger-ui.html").permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
                         .requestMatchers("/api/activities", "/api/activities/**").authenticated()
+                        .requestMatchers("/api/emission-factors/**").authenticated()
+                        .requestMatchers("/api/notifications/**").authenticated()
+                        .requestMatchers("/api/ai/**").authenticated()
                         .requestMatchers("/api/users/**").authenticated()
                         .requestMatchers("/api/analytics/**").authenticated()
                         .requestMatchers("/api/goals/**").authenticated()

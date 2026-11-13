@@ -3,16 +3,20 @@ package com.carbontrack.backend.service;
 import com.carbontrack.backend.entity.ActivityCategory;
 import com.carbontrack.backend.entity.ActivityLog;
 import com.carbontrack.backend.entity.ActivityType;
+import com.carbontrack.backend.event.ActivityLoggedEvent;
 import com.carbontrack.backend.repository.ActivityCategoryRepository;
 import com.carbontrack.backend.repository.ActivityLogRepository;
 import com.carbontrack.backend.repository.ActivityTypeRepository;
 
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.util.List;
+import java.util.*;
+import java.util.stream.Collectors;
 
 @Service
 public class ActivityLogService {
@@ -21,6 +25,12 @@ public class ActivityLogService {
     private final EmissionCalculationService emissionCalculationService;
     private final ActivityTypeRepository activityTypeRepository;
     private final ActivityCategoryRepository activityCategoryRepository;
+
+    @Autowired(required = false)
+    private ApplicationEventPublisher eventPublisher;
+
+    @Autowired(required = false)
+    private CacheEvictionService cacheEvictionService;
 
     public ActivityLogService(
             ActivityLogRepository activityLogRepository,
@@ -55,7 +65,9 @@ public class ActivityLogService {
         activityLog.setCo2eKg(result.co2eKg());
         activityLog.setEmissionFactorId(result.emissionFactorId());
 
-        return activityLogRepository.save(activityLog);
+        ActivityLog saved = activityLogRepository.save(activityLog);
+        publishActivityChange(saved.getUserId(), saved.getId(), "CREATED");
+        return saved;
     }
 
     // Calculate CO2 without saving to database (real-time preview)
@@ -97,7 +109,9 @@ public class ActivityLogService {
         existing.setCo2eKg(result.co2eKg());
         existing.setEmissionFactorId(result.emissionFactorId());
 
-        return activityLogRepository.save(existing);
+        ActivityLog saved = activityLogRepository.save(existing);
+        publishActivityChange(saved.getUserId(), saved.getId(), "UPDATED");
+        return saved;
     }
 
     // Delete an activity (verifying user ownership)
@@ -111,6 +125,56 @@ public class ActivityLogService {
         }
 
         activityLogRepository.delete(existing);
+        publishActivityChange(userId, id, "DELETED");
+    }
+
+    private void publishActivityChange(Long userId, Long activityId, String actionType) {
+        if (cacheEvictionService != null) {
+            cacheEvictionService.evictActivityDerivedCaches();
+        }
+        if (eventPublisher != null && userId != null) {
+            eventPublisher.publishEvent(new ActivityLoggedEvent(userId, activityId, actionType));
+        }
+    }
+
+    @Transactional(readOnly = true)
+    public List<Map<String, Object>> getFrequentActivities(Long userId) {
+        if (userId == null || userId <= 0) {
+            return List.of();
+        }
+        List<ActivityLog> logs = activityLogRepository.findByUserIdOrderByLogDateDesc(userId);
+        if (logs.isEmpty()) {
+            return List.of();
+        }
+
+        Map<Short, ActivityType> typeMap = activityTypeRepository.findByIsActiveTrue().stream()
+                .collect(Collectors.toMap(ActivityType::getId, t -> t));
+        Map<Short, ActivityCategory> catMap = activityCategoryRepository.findAll().stream()
+                .collect(Collectors.toMap(ActivityCategory::getId, c -> c));
+
+        Map<Short, List<ActivityLog>> grouped = logs.stream()
+                .collect(Collectors.groupingBy(ActivityLog::getActivityTypeId));
+
+        return grouped.entrySet().stream()
+                .sorted((a, b) -> Integer.compare(b.getValue().size(), a.getValue().size()))
+                .limit(6)
+                .map(entry -> {
+                    ActivityType t = typeMap.get(entry.getKey());
+                    List<ActivityLog> items = entry.getValue();
+                    ActivityLog latest = items.get(0);
+                    ActivityCategory cat = catMap.get(latest.getCategoryId());
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("activityTypeId", entry.getKey());
+                    m.put("categoryId", latest.getCategoryId());
+                    m.put("categoryName", cat != null ? cat.getName() : "transport");
+                    m.put("activityName", t != null ? t.getName() : "Activity #" + entry.getKey());
+                    m.put("unit", latest.getUnit());
+                    m.put("defaultQuantity", latest.getQuantity());
+                    m.put("co2eKg", latest.getCo2eKg());
+                    m.put("count", items.size());
+                    return m;
+                })
+                .toList();
     }
 
     // Get all activities

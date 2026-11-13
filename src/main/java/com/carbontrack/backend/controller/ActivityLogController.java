@@ -178,6 +178,16 @@ public class ActivityLogController {
         return ResponseEntity.ok(activityLogService.getCategories());
     }
 
+    // Get user's most frequently logged activities for quick logging
+    @GetMapping("/frequent")
+    public ResponseEntity<?> getFrequentActivities(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        return ResponseEntity.ok(activityLogService.getFrequentActivities(user.getId()));
+    }
+
     private User getAuthenticatedUser(Authentication authentication) {
         if (authentication == null
                 || !authentication.isAuthenticated()

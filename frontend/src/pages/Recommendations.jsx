@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { apiRequest } from "../api";
 import {
   Lightbulb,
@@ -20,10 +20,7 @@ import {
   Check,
   X,
   Flame,
-  ShieldCheck,
   Activity,
-  SlidersHorizontal,
-  Info,
 } from "lucide-react";
 
 const CATEGORY_META = {
@@ -74,7 +71,7 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
   const [completionModalRec, setCompletionModalRec] = useState(null);
   const [actualSavingsInput, setActualSavingsInput] = useState("");
 
-  const loadData = async (forceRefresh = false) => {
+  const loadData = useCallback(async (forceRefresh = false) => {
     if (forceRefresh) {
       setRegenerating(true);
     } else {
@@ -98,13 +95,15 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
       setLoading(false);
       setRegenerating(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    if (token) {
+    if (!token) return undefined;
+    const timer = setTimeout(() => {
       loadData(false);
-    }
-  }, [token]);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [token, loadData]);
 
   // Handle starting a recommendation
   const handleStartAction = async (id) => {
@@ -446,7 +445,7 @@ export default function Recommendations({ token, onNavigate, onOpenAiChat }) {
           )}
         </div>
       ) : (
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: "20px" }}>
+        <div className="recommendations-grid">
           {filteredList.map((rec) => {
             const meta = CATEGORY_META[rec.categoryName] || {
               icon: Lightbulb,

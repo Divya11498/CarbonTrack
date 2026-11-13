@@ -25,8 +25,8 @@ export default function CountUp({
 
     // Check prefers-reduced-motion
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setValue(end);
-      return;
+      const rafId = requestAnimationFrame(() => setValue(end));
+      return () => cancelAnimationFrame(rafId);
     }
 
     const observer = new IntersectionObserver(

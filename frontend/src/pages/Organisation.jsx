@@ -1,13 +1,9 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import {
   Building2,
   Users,
-  Leaf,
   TrendingDown,
-  TrendingUp,
-  Download,
   Search,
-  CalendarDays,
   AlertCircle,
   RefreshCw,
   Award,
@@ -17,7 +13,6 @@ import {
   Trash2,
   ExternalLink,
   Mail,
-  Shield,
   ShieldAlert,
   ShieldCheck,
   CheckCircle2,
@@ -25,16 +20,31 @@ import {
   Copy,
   Check,
   Globe,
-  Tag,
-  Briefcase,
   X,
-  Edit,
-  ChevronDown,
   LayoutGrid,
   Table as TableIcon,
-  Filter,
+  ChevronLeft,
+  ChevronRight,
+  PieChart as PieChartIcon,
+  BarChart3,
 } from "lucide-react";
+import {
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  Tooltip,
+  CartesianGrid,
+  Legend,
+} from "recharts";
+import UserAvatar from "../components/UserAvatar";
 import { apiRequest } from "../api";
+
+const ORG_CHART_COLORS = ["#8D9B72", "#5C8CA6", "#D99B4B", "#8774A3", "#789968"];
 
 export default function Organisation({ token }) {
   const [orgData, setOrgData] = useState(null);
@@ -46,11 +56,13 @@ export default function Organisation({ token }) {
   const [activeTab, setActiveTab] = useState("members"); // 'members' | 'departments' | 'invitations'
   const [viewMode, setViewMode] = useState("table"); // 'table' | 'cards'
 
-  // Search & Filter
+  // Search, Filter & Pagination
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("emissions");
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
 
   // Modals state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
@@ -81,7 +93,7 @@ export default function Organisation({ token }) {
   const [createDescription, setCreateDescription] = useState("");
   const [createWebsite, setCreateWebsite] = useState("");
   const [createContactEmail, setCreateContactEmail] = useState("");
-  const [createLogoUrl, setCreateLogoUrl] = useState("");
+  const [createLogoUrl] = useState("");
   const [createLoading, setCreateLoading] = useState(false);
 
   // Auto-dismiss toast
@@ -96,7 +108,7 @@ export default function Organisation({ token }) {
     setToast({ message, type });
   };
 
-  const loadOrg = async () => {
+  const loadOrg = useCallback(async () => {
     setLoading(true);
     setError("");
     try {
@@ -115,11 +127,15 @@ export default function Organisation({ token }) {
     } finally {
       setLoading(false);
     }
-  };
+  }, [token]);
 
   useEffect(() => {
-    if (token) loadOrg();
-  }, [token]);
+    if (!token) return undefined;
+    const timer = setTimeout(() => {
+      loadOrg();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [token, loadOrg]);
 
   const userRole = orgData?.userRole || "MEMBER";
   const isAdminOrOwner = userRole === "OWNER" || userRole === "ADMIN";
@@ -151,6 +167,13 @@ export default function Organisation({ token }) {
     });
     return Array.from(set);
   }, [orgData]);
+
+  const totalPages = Math.max(1, Math.ceil(filteredMembers.length / pageSize));
+  const safePage = Math.min(currentPage, totalPages);
+  const paginatedMembers = useMemo(() => {
+    const start = (safePage - 1) * pageSize;
+    return filteredMembers.slice(start, start + pageSize);
+  }, [filteredMembers, safePage]);
 
   // --- ACTIONS ---
 
@@ -386,7 +409,7 @@ export default function Organisation({ token }) {
                     placeholder="Brief description of your organization's mission"
                   />
                 </div>
-                <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+                <div className="form-row-two-col">
                   <div className="form-group">
                     <label>Website URL</label>
                     <input
@@ -625,8 +648,8 @@ export default function Organisation({ token }) {
         </div>
       </div>
 
-      {/* KPI Stats Grid (4 Cards) */}
-      <div className="org-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: "18px", marginBottom: "24px" }}>
+      {/* KPI Stats Grid */}
+      <div className="org-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "18px", marginBottom: "24px" }}>
         <div className="panel org-kpi-card" style={{ padding: "20px" }}>
           <div className="icon-badge bg-green" style={{ marginBottom: "12px" }}>
             <Building2 size={20} />
@@ -635,16 +658,18 @@ export default function Organisation({ token }) {
           <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
             {totalEmissions.toFixed(1)} kg
           </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>Total logged CO₂e</span>
+          <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
+            Avg {Number(orgData?.averageDailyCo2eKg || 0).toFixed(2)} kg/day
+          </span>
         </div>
 
         <div className="panel org-kpi-card" style={{ padding: "20px" }}>
           <div className="icon-badge bg-emerald" style={{ marginBottom: "12px" }}>
             <Users size={20} />
           </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Team Members</span>
+          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Active Team Members</span>
           <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {orgData?.totalMembers || filteredMembers.length}
+            {orgData?.activeUsersCount ?? orgData?.totalMembers ?? filteredMembers.length} / {orgData?.totalMembers || filteredMembers.length}
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
             Avg {avgPerMember.toFixed(1)} kg / employee
@@ -655,26 +680,91 @@ export default function Organisation({ token }) {
           <div className="icon-badge bg-lime" style={{ marginBottom: "12px" }}>
             <TrendingDown size={20} />
           </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Monthly Budget</span>
+          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>CO₂e Saved vs Budget</span>
           <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {monthlyTarget} kg
+            {Number(orgData?.totalCo2eSavedKg || 0).toFixed(1)} kg
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: totalEmissions <= monthlyTarget ? "var(--emerald)" : "var(--red)" }}>
-            {totalEmissions <= monthlyTarget ? "Within budget ✓" : "Exceeds budget"}
+            Budget: {monthlyTarget} kg ({totalEmissions <= monthlyTarget ? "Within budget" : "Over budget"})
           </span>
         </div>
 
         <div className="panel org-kpi-card" style={{ padding: "20px" }}>
           <div className="icon-badge bg-green" style={{ marginBottom: "12px" }}>
-            <Clock size={20} />
+            <Award size={20} />
           </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Pending Invitations</span>
+          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Goals Achieved</span>
           <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {orgData?.pendingInvitationsCount || (orgData?.invitations || []).length}
+            {orgData?.goalsAchievedCount ?? 0}
           </strong>
           <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Awaiting response
+            {orgData?.pendingInvitationsCount || (orgData?.invitations || []).length} pending invites
           </span>
+        </div>
+      </div>
+
+      {/* Overview Analytics Charts */}
+      <div
+        className="analytics-charts-grid"
+        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "18px", marginBottom: "24px" }}
+      >
+        <div className="panel" style={{ padding: "20px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+            <PieChartIcon size={18} style={{ color: "var(--primary)" }} />
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Workforce Category Share</h3>
+          </div>
+          {Array.isArray(orgData?.categoryBreakdown) && orgData.categoryBreakdown.length > 0 ? (
+            <div style={{ width: "100%", height: "230px" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={orgData.categoryBreakdown}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                  >
+                    {orgData.categoryBreakdown.map((entry, idx) => (
+                      <Cell key={entry.name || idx} fill={ORG_CHART_COLORS[idx % ORG_CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Share"]} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "36px 0", textAlign: "center" }}>
+              No category emissions recorded yet across this organization.
+            </p>
+          )}
+        </div>
+
+        <div className="panel" style={{ padding: "20px", minWidth: 0 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
+            <BarChart3 size={18} style={{ color: "var(--primary)" }} />
+            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Monthly Organization Trend</h3>
+          </div>
+          {Array.isArray(orgData?.monthlyTrends) && orgData.monthlyTrends.length > 0 ? (
+            <div style={{ width: "100%", height: "230px" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={orgData.monthlyTrends}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
+                  <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={12} />
+                  <YAxis stroke="var(--text-muted)" fontSize={12} />
+                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Total"]} />
+                  <Bar dataKey="co2e" fill="var(--primary)" radius={[6, 6, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          ) : (
+            <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "36px 0", textAlign: "center" }}>
+              Monthly trend will populate once team activities are logged.
+            </p>
+          )}
         </div>
       </div>
 
@@ -788,7 +878,10 @@ export default function Organisation({ token }) {
                 type="text"
                 placeholder="Search member, email, department..."
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
+                onChange={(e) => {
+                  setSearch(e.target.value);
+                  setCurrentPage(1);
+                }}
               />
             </div>
 
@@ -797,7 +890,10 @@ export default function Organisation({ token }) {
               {/* Role filter */}
               <select
                 value={roleFilter}
-                onChange={(e) => setRoleFilter(e.target.value)}
+                onChange={(e) => {
+                  setRoleFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "var(--radius-md)",
@@ -816,7 +912,10 @@ export default function Organisation({ token }) {
               {/* Department filter */}
               <select
                 value={deptFilter}
-                onChange={(e) => setDeptFilter(e.target.value)}
+                onChange={(e) => {
+                  setDeptFilter(e.target.value);
+                  setCurrentPage(1);
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "var(--radius-md)",
@@ -837,7 +936,10 @@ export default function Organisation({ token }) {
               {/* Sort by */}
               <select
                 value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
+                onChange={(e) => {
+                  setSortBy(e.target.value);
+                  setCurrentPage(1);
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: "var(--radius-md)",
@@ -880,32 +982,17 @@ export default function Organisation({ token }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredMembers.map((m) => (
+                  {paginatedMembers.map((m) => (
                     <tr key={m.userId}>
                       <td>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          <div
-                            style={{
-                              width: "36px",
-                              height: "36px",
-                              borderRadius: "50%",
-                              background: "rgba(16, 185, 129, 0.15)",
-                              color: "var(--primary-forest)",
-                              display: "flex",
-                              alignItems: "center",
-                              justifyContent: "center",
-                              fontWeight: "700",
-                              fontSize: "14px",
-                              overflow: "hidden",
-                              flexShrink: 0,
-                            }}
-                          >
-                            {m.avatarUrl ? (
-                              <img src={m.avatarUrl} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            ) : (
-                              m.name?.charAt(0).toUpperCase() || "M"
-                            )}
-                          </div>
+                          <UserAvatar
+                            src={m.avatarUrl}
+                            seed={m.avatarSeed || m.userId}
+                            name={m.name}
+                            email={m.email}
+                            size={36}
+                          />
                           <div>
                             <strong>{m.name}</strong>
                             <p className="table-email" style={{ margin: 0, fontSize: "12px", color: "var(--text-muted)" }}>
@@ -992,7 +1079,7 @@ export default function Organisation({ token }) {
           ) : (
             /* Card Grid View */
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
-              {filteredMembers.map((m) => (
+              {paginatedMembers.map((m) => (
                 <div
                   key={m.userId}
                   className="panel"
@@ -1006,27 +1093,13 @@ export default function Organisation({ token }) {
                 >
                   <div>
                     <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                      <div
-                        style={{
-                          width: "44px",
-                          height: "44px",
-                          borderRadius: "50%",
-                          background: "rgba(16, 185, 129, 0.15)",
-                          color: "var(--primary-forest)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          fontWeight: "800",
-                          fontSize: "16px",
-                          overflow: "hidden",
-                        }}
-                      >
-                        {m.avatarUrl ? (
-                          <img src={m.avatarUrl} alt={m.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                        ) : (
-                          m.name?.charAt(0).toUpperCase() || "M"
-                        )}
-                      </div>
+                      <UserAvatar
+                        src={m.avatarUrl}
+                        seed={m.avatarSeed || m.userId}
+                        name={m.name}
+                        email={m.email}
+                        size={44}
+                      />
 
                       <span
                         style={{
@@ -1091,6 +1164,50 @@ export default function Organisation({ token }) {
                   )}
                 </div>
               ))}
+            </div>
+          )}
+
+          {/* Pagination Controls */}
+          {!loading && filteredMembers.length > pageSize && (
+            <div
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                flexWrap: "wrap",
+                gap: "12px",
+                marginTop: "18px",
+                paddingTop: "14px",
+                borderTop: "1px solid var(--border)",
+                fontSize: "13px",
+              }}
+            >
+              <span style={{ color: "var(--text-muted)" }}>
+                Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filteredMembers.length)} of {filteredMembers.length} members
+              </span>
+              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={safePage <= 1}
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  style={{ padding: "6px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                >
+                  <ChevronLeft size={14} /> Previous
+                </button>
+                <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
+                  Page {safePage} of {totalPages}
+                </span>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  disabled={safePage >= totalPages}
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  style={{ padding: "6px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                >
+                  Next <ChevronRight size={14} />
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -1262,7 +1379,7 @@ export default function Organisation({ token }) {
                 />
               </div>
 
-              <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+              <div className="form-row-two-col">
                 <div className="form-group">
                   <label>Role</label>
                   <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
@@ -1351,7 +1468,7 @@ export default function Organisation({ token }) {
                 />
               </div>
 
-              <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+              <div className="form-row-two-col">
                 <div className="form-group">
                   <label>Website URL</label>
                   <input

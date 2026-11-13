@@ -18,7 +18,8 @@ export async function apiRequest(path, { method = "GET", body, token } = {}) {
     });
   } catch (err) {
     throw new Error(
-      "Cannot connect to the backend server. Please verify Spring Boot is running on port 8080."
+      "Cannot connect to the backend server. Please verify Spring Boot is running on port 8080.",
+      { cause: err }
     );
   }
 

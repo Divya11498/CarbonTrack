@@ -8,6 +8,7 @@ import com.carbontrack.backend.repository.PasswordResetTokenRepository;
 import com.carbontrack.backend.repository.UserProfileRepository;
 import com.carbontrack.backend.repository.UserRepository;
 import com.carbontrack.backend.service.CustomUserDetailsService;
+import com.carbontrack.backend.service.EmailService;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -42,6 +43,7 @@ public class AuthController {
     private final UserProfileRepository userProfileRepository;
     private final PasswordResetTokenRepository passwordResetTokenRepository;
     private final PasswordEncoder passwordEncoder;
+    private final EmailService emailService;
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @Value("${app.google.client-id:}")
@@ -54,7 +56,8 @@ public class AuthController {
             UserRepository userRepository,
             UserProfileRepository userProfileRepository,
             PasswordResetTokenRepository passwordResetTokenRepository,
-            PasswordEncoder passwordEncoder) {
+            PasswordEncoder passwordEncoder,
+            EmailService emailService) {
         this.authenticationManager = authenticationManager;
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
@@ -62,6 +65,7 @@ public class AuthController {
         this.userProfileRepository = userProfileRepository;
         this.passwordResetTokenRepository = passwordResetTokenRepository;
         this.passwordEncoder = passwordEncoder;
+        this.emailService = emailService;
     }
 
     @PostMapping("/login")
@@ -130,12 +134,16 @@ public class AuthController {
         user.setDisplayName(request.getName().trim());
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole("USER");
+        String seed = "ct-" + Integer.toHexString(email.hashCode());
+        user.setAvatarSeed(seed);
+        user.setAvatarUrl("https://blobatar.dev/avatar/" + seed + "?gen=2");
 
         User savedUser = userRepository.save(user);
 
         // Initialize default user profile
         UserProfile profile = new UserProfile(savedUser.getId());
         userProfileRepository.save(profile);
+        emailService.sendWelcomeEmail(savedUser);
 
         // Generate token for automatic login after registration
         String token = jwtService.generateToken(savedUser.getEmail());
@@ -146,7 +154,8 @@ public class AuthController {
                 "tokenType", "Bearer",
                 "userId", savedUser.getId(),
                 "email", savedUser.getEmail(),
-                "name", savedUser.getDisplayName()
+                "name", savedUser.getDisplayName(),
+                "avatarUrl", savedUser.getAvatarUrl()
         ));
     }
 
@@ -215,12 +224,17 @@ public class AuthController {
                 user.setLastName(nameParts.length > 1 ? nameParts[1] : "");
                 user.setDisplayName(name.trim());
                 user.setGoogleId(sub);
-                user.setAvatarUrl(picture);
+                String seed = "ct-" + Integer.toHexString(email.hashCode());
+                user.setAvatarSeed(seed);
+                user.setAvatarUrl(picture != null && !picture.isBlank()
+                        ? picture
+                        : "https://blobatar.dev/avatar/" + seed + "?gen=2");
                 user.setRole("USER");
                 user = userRepository.save(user);
 
                 UserProfile profile = new UserProfile(user.getId());
                 userProfileRepository.save(profile);
+                emailService.sendWelcomeEmail(user);
             }
 
             String appToken = jwtService.generateToken(user.getEmail());
@@ -261,10 +275,17 @@ public class AuthController {
             PasswordResetToken resetToken = new PasswordResetToken(user.getId(), tokenHash, expiresAt);
             passwordResetTokenRepository.save(resetToken);
 
-            // In local/development environments where SMTP is not configured,
-            // we provide the token in response to allow the user to test the reset flow seamlessly.
+            Map<String, Object> emailResult = emailService.sendPasswordResetEmail(user, rawToken);
+            if ("SENT".equals(emailResult.get("status"))) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "If this email is registered, password reset instructions have been sent to your inbox."
+                ));
+            }
+
+            // When SMTP is not configured locally, return devResetToken cleanly without claiming email was sent
             return ResponseEntity.ok(Map.of(
-                    "message", "If this email is registered, password reset instructions have been sent.",
+                    "message", "SMTP is not configured locally. Use the reset token below to complete your password reset.",
+                    "smtpConfigured", false,
                     "devResetToken", rawToken
             ));
         }

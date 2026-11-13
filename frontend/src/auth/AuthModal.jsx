@@ -1,13 +1,11 @@
 import { useState, useEffect, useRef } from "react";
 import {
   X,
-  Leaf,
   Mail,
   Lock,
   Eye,
   EyeOff,
   UserRound,
-  ArrowRight,
   AlertCircle,
   CheckCircle2,
   LoaderCircle,
@@ -28,9 +26,11 @@ export default function AuthModal({
 
   // Sync mode with initialMode when modal opens
   useEffect(() => {
-    if (isOpen) {
+    if (!isOpen) return undefined;
+    const timer = setTimeout(() => {
       setMode(initialMode || "login");
-    }
+    }, 0);
+    return () => clearTimeout(timer);
   }, [isOpen, initialMode]);
 
   // Handle ESC key to close

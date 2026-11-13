@@ -9,10 +9,8 @@ import {
   Sun,
   ShieldCheck,
   Activity,
-  Layers,
   Sparkles,
   ArrowUpRight,
-  Info,
 } from "lucide-react";
 import CountUp from "./CountUp";
 

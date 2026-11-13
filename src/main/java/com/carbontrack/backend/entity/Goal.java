@@ -46,6 +46,12 @@ public class Goal {
     @Column(nullable = false, length = 20)
     private String status = "ACTIVE";
 
+    @Column(name = "reduction_percentage", precision = 5, scale = 2)
+    private BigDecimal reductionPercentage;
+
+    @Column(name = "baseline_co2e_kg", precision = 12, scale = 2)
+    private BigDecimal baselineCo2eKg;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private OffsetDateTime createdAt;
 
@@ -149,6 +155,22 @@ public class Goal {
 
     public void setStatus(String status) {
         this.status = status;
+    }
+
+    public BigDecimal getReductionPercentage() {
+        return reductionPercentage;
+    }
+
+    public void setReductionPercentage(BigDecimal reductionPercentage) {
+        this.reductionPercentage = reductionPercentage;
+    }
+
+    public BigDecimal getBaselineCo2eKg() {
+        return baselineCo2eKg;
+    }
+
+    public void setBaselineCo2eKg(BigDecimal baselineCo2eKg) {
+        this.baselineCo2eKg = baselineCo2eKg;
     }
 
     public OffsetDateTime getCreatedAt() {

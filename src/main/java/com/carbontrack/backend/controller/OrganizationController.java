@@ -1,15 +1,20 @@
 package com.carbontrack.backend.controller;
 
+import com.carbontrack.backend.entity.ActivityCategory;
 import com.carbontrack.backend.entity.ActivityLog;
+import com.carbontrack.backend.entity.Goal;
 import com.carbontrack.backend.entity.Organization;
 import com.carbontrack.backend.entity.OrganizationInvitation;
 import com.carbontrack.backend.entity.OrganizationMember;
 import com.carbontrack.backend.entity.User;
+import com.carbontrack.backend.repository.ActivityCategoryRepository;
 import com.carbontrack.backend.repository.ActivityLogRepository;
+import com.carbontrack.backend.repository.GoalRepository;
 import com.carbontrack.backend.repository.OrganizationInvitationRepository;
 import com.carbontrack.backend.repository.OrganizationMemberRepository;
 import com.carbontrack.backend.repository.OrganizationRepository;
 import com.carbontrack.backend.repository.UserRepository;
+import com.carbontrack.backend.service.CacheEvictionService;
 
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -18,7 +23,9 @@ import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -31,18 +38,27 @@ public class OrganizationController {
     private final OrganizationInvitationRepository organizationInvitationRepository;
     private final ActivityLogRepository activityLogRepository;
     private final UserRepository userRepository;
+    private final GoalRepository goalRepository;
+    private final ActivityCategoryRepository categoryRepository;
+    private final CacheEvictionService cacheEvictionService;
 
     public OrganizationController(
             OrganizationRepository organizationRepository,
             OrganizationMemberRepository organizationMemberRepository,
             OrganizationInvitationRepository organizationInvitationRepository,
             ActivityLogRepository activityLogRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            GoalRepository goalRepository,
+            ActivityCategoryRepository categoryRepository,
+            CacheEvictionService cacheEvictionService) {
         this.organizationRepository = organizationRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.organizationInvitationRepository = organizationInvitationRepository;
         this.activityLogRepository = activityLogRepository;
         this.userRepository = userRepository;
+        this.goalRepository = goalRepository;
+        this.categoryRepository = categoryRepository;
+        this.cacheEvictionService = cacheEvictionService;
     }
 
     // 1. Get current user's organization workspace
@@ -58,15 +74,7 @@ public class OrganizationController {
         OrganizationMember userMember = null;
 
         if (memberships.isEmpty()) {
-            // Check if any default organization exists
-            List<Organization> allOrgs = organizationRepository.findAll();
-            if (!allOrgs.isEmpty()) {
-                org = allOrgs.get(0);
-                userMember = new OrganizationMember(org.getId(), user.getId(), "MEMBER", "Engineering");
-                organizationMemberRepository.save(userMember);
-            } else {
-                return ResponseEntity.ok(Map.of("hasOrganization", false));
-            }
+            return ResponseEntity.ok(Map.of("hasOrganization", false));
         } else {
             userMember = memberships.get(0);
             org = organizationRepository.findById(userMember.getOrganizationId()).orElse(null);
@@ -399,36 +407,61 @@ public class OrganizationController {
         List<User> userList = userRepository.findAllById(memberUserIds);
         Map<Long, User> userMap = userList.stream().collect(Collectors.toMap(User::getId, u -> u));
 
-        List<ActivityLog> allActivities = activityLogRepository.findAll();
+        List<ActivityLog> orgScopedActivities = activityLogRepository.findAll().stream()
+                .filter(a -> memberUserIds.contains(a.getUserId()))
+                .filter(a -> a.getOrganizationId() == null || org.getId().equals(a.getOrganizationId()))
+                .toList();
+
+        LocalDate today = LocalDate.now();
+        LocalDate thirtyDaysAgo = today.minusDays(29);
+        LocalDate monthStart = today.withDayOfMonth(1);
 
         BigDecimal totalOrgEmissions = BigDecimal.ZERO;
+        BigDecimal totalMonthEmissions = BigDecimal.ZERO;
         List<Map<String, Object>> memberDetails = new ArrayList<>();
         Set<Short> activeCategories = new HashSet<>();
+        Set<Long> activeUsersCountSet = new HashSet<>();
+        Map<Short, BigDecimal> categorySums = new HashMap<>();
 
         for (OrganizationMember m : members) {
             User memberUser = userMap.get(m.getUserId());
-            List<ActivityLog> memberActs = allActivities.stream()
+            List<ActivityLog> memberActs = orgScopedActivities.stream()
                     .filter(a -> m.getUserId().equals(a.getUserId()))
                     .collect(Collectors.toList());
 
             BigDecimal memberEmissions = BigDecimal.ZERO;
             for (ActivityLog a : memberActs) {
-                if (a.getCo2eKg() != null) {
-                    memberEmissions = memberEmissions.add(a.getCo2eKg());
+                BigDecimal c = a.getCo2eKg() != null ? a.getCo2eKg() : BigDecimal.ZERO;
+                memberEmissions = memberEmissions.add(c);
+                if (a.getLogDate() != null && !a.getLogDate().isBefore(monthStart)) {
+                    totalMonthEmissions = totalMonthEmissions.add(c);
+                }
+                if (a.getLogDate() != null && !a.getLogDate().isBefore(thirtyDaysAgo)) {
+                    activeUsersCountSet.add(m.getUserId());
                 }
                 if (a.getCategoryId() != null) {
                     activeCategories.add(a.getCategoryId());
+                    categorySums.merge(a.getCategoryId(), c, BigDecimal::add);
                 }
             }
 
             totalOrgEmissions = totalOrgEmissions.add(memberEmissions);
 
+            String avatarUrl = memberUser != null ? memberUser.getAvatarUrl() : null;
+            if (avatarUrl == null || avatarUrl.isBlank()) {
+                String seed = (memberUser != null && memberUser.getAvatarSeed() != null)
+                        ? memberUser.getAvatarSeed()
+                        : "ct-member-" + m.getUserId();
+                avatarUrl = "https://blobatar.dev/avatar/" + seed + "?gen=2";
+            }
+
             Map<String, Object> map = new HashMap<>();
             map.put("memberId", m.getId());
             map.put("userId", m.getUserId());
-            map.put("name", memberUser != null ? memberUser.getDisplayName() : "Member");
+            map.put("name", memberUser != null && memberUser.getDisplayName() != null ? memberUser.getDisplayName() : "Member");
             map.put("email", memberUser != null ? memberUser.getEmail() : "");
-            map.put("avatarUrl", memberUser != null ? memberUser.getAvatarUrl() : "");
+            map.put("avatarUrl", avatarUrl);
+            map.put("avatarSeed", (memberUser != null && memberUser.getAvatarSeed() != null) ? memberUser.getAvatarSeed() : "ct-member-" + m.getUserId());
             map.put("role", m.getRole());
             map.put("department", (m.getDepartment() != null) ? m.getDepartment() : "Engineering");
             map.put("activitiesCount", memberActs.size());
@@ -479,6 +512,55 @@ public class OrganizationController {
             return map;
         }).collect(Collectors.toList());
 
+        Map<Short, ActivityCategory> catMap = categoryRepository.findAll().stream()
+                .collect(Collectors.toMap(ActivityCategory::getId, c -> c));
+        List<Map<String, Object>> categoryBreakdown = categorySums.entrySet().stream()
+                .map(e -> {
+                    ActivityCategory c = catMap.get(e.getKey());
+                    String cname = c != null ? c.getName() : "other";
+                    Map<String, Object> m = new HashMap<>();
+                    m.put("name", Character.toUpperCase(cname.charAt(0)) + cname.substring(1).toLowerCase());
+                    m.put("value", e.getValue().setScale(1, RoundingMode.HALF_UP));
+                    return m;
+                })
+                .sorted((a, b) -> ((BigDecimal) b.get("value")).compareTo((BigDecimal) a.get("value")))
+                .toList();
+
+        // Monthly 6-month organization trend
+        List<Map<String, Object>> monthlyTrends = new ArrayList<>();
+        DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("MMM yyyy");
+        LocalDate mCursor = monthStart.minusMonths(5);
+        for (int i = 0; i < 6; i++) {
+            LocalDate ms = mCursor.plusMonths(i);
+            LocalDate me = ms.plusMonths(1).minusDays(1);
+            BigDecimal mSum = orgScopedActivities.stream()
+                    .filter(a -> a.getLogDate() != null && !a.getLogDate().isBefore(ms) && !a.getLogDate().isAfter(me))
+                    .map(a -> a.getCo2eKg() != null ? a.getCo2eKg() : BigDecimal.ZERO)
+                    .reduce(BigDecimal.ZERO, BigDecimal::add);
+            Map<String, Object> pt = new HashMap<>();
+            pt.put("month", ms.format(monthFmt));
+            pt.put("co2e", mSum.setScale(1, RoundingMode.HALF_UP));
+            monthlyTrends.add(pt);
+        }
+
+        // Organization goals achieved count across members
+        List<Goal> orgGoals = goalRepository.findAll().stream()
+                .filter(g -> memberUserIds.contains(g.getUserId()))
+                .filter(g -> g.getOrganizationId() == null || org.getId().equals(g.getOrganizationId()))
+                .toList();
+        long goalsAchievedCount = orgGoals.stream()
+                .filter(g -> "ACHIEVED".equalsIgnoreCase(g.getStatus()) || "COMPLETED".equalsIgnoreCase(g.getStatus()))
+                .count();
+
+        double monthlyTargetVal = Math.max(300.0, members.size() * 150.0);
+        BigDecimal orgMonthlyTarget = BigDecimal.valueOf(monthlyTargetVal).setScale(2, RoundingMode.HALF_UP);
+        BigDecimal totalCo2eSaved = orgMonthlyTarget.subtract(totalMonthEmissions);
+        if (totalCo2eSaved.compareTo(BigDecimal.ZERO) < 0) {
+            totalCo2eSaved = BigDecimal.ZERO;
+        }
+        int dayOfMonth = Math.max(1, today.getDayOfMonth());
+        BigDecimal avgDailyCo2 = totalMonthEmissions.divide(BigDecimal.valueOf(dayOfMonth), 2, RoundingMode.HALF_UP);
+
         Map<String, Object> response = new HashMap<>();
         response.put("hasOrganization", true);
         response.put("organizationId", org.getId());
@@ -490,11 +572,18 @@ public class OrganizationController {
         response.put("logoUrl", org.getLogoUrl());
         response.put("userRole", userMember != null ? userMember.getRole() : "MEMBER");
         response.put("totalMembers", members.size());
-        response.put("activeProjects", Math.max(activeCategories.size(), 3));
+        response.put("activeUsersCount", activeUsersCountSet.size());
+        response.put("activeProjects", activeCategories.size());
         response.put("pendingInvitationsCount", pendingInvs.size());
         response.put("totalEmissionsKg", totalOrgEmissions.setScale(1, RoundingMode.HALF_UP));
+        response.put("monthlyEmissionsKg", totalMonthEmissions.setScale(1, RoundingMode.HALF_UP));
         response.put("averagePerMemberKg", avgPerEmployee);
-        response.put("organizationMonthlyTarget", new BigDecimal("1200.00"));
+        response.put("averageDailyCo2eKg", avgDailyCo2);
+        response.put("totalCo2eSavedKg", totalCo2eSaved.setScale(1, RoundingMode.HALF_UP));
+        response.put("goalsAchievedCount", goalsAchievedCount);
+        response.put("organizationMonthlyTarget", orgMonthlyTarget);
+        response.put("categoryBreakdown", categoryBreakdown);
+        response.put("monthlyTrends", monthlyTrends);
         response.put("members", memberDetails);
         response.put("departments", departmentStats);
         response.put("invitations", invitationDetails);

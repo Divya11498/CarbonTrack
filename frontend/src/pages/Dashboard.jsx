@@ -3,25 +3,20 @@ import { apiRequest } from "../api";
 import {
   Leaf,
   TrendingDown,
-  TrendingUp,
   Target,
   Award,
   Flame,
-  Lightbulb,
-  Activity,
   PlusCircle,
   Calendar,
   ArrowRight,
   Sparkles,
-  Zap,
-  CheckCircle2,
 } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
-  LineChart,
-  Line,
+  AreaChart,
+  Area,
   PieChart,
   Pie,
   Cell,
@@ -49,29 +44,37 @@ export default function Dashboard({
   token = "",
 }) {
   const [period, setPeriod] = useState("month");
+  const [chartType, setChartType] = useState("bar");
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [topRecommendation, setTopRecommendation] = useState(null);
-  const [loadingAi, setLoadingAi] = useState(false);
+  const [benchmarkData, setBenchmarkData] = useState(null);
 
   useEffect(() => {
     if (!token) return;
-    setLoadingAi(true);
-    apiRequest("/api/recommendations", { token })
-      .then((recs) => {
-        if (Array.isArray(recs) && recs.length > 0) {
-          const actionable =
-            recs.find((r) => r.status === "ACTIVE" || r.status === "IN_PROGRESS") ||
-            recs[0];
-          setTopRecommendation(actionable);
-        }
-      })
-      .catch(() => {})
-      .finally(() => setLoadingAi(false));
+    let active = true;
+    Promise.allSettled([
+      apiRequest("/api/recommendations", { token }),
+      apiRequest("/api/analytics/benchmarks", { token }),
+    ]).then(([recsRes, benchRes]) => {
+      if (!active) return;
+      if (recsRes.status === "fulfilled" && Array.isArray(recsRes.value) && recsRes.value.length > 0) {
+        const recs = recsRes.value;
+        const actionable =
+          recs.find((r) => r.status === "ACTIVE" || r.status === "IN_PROGRESS") ||
+          recs[0];
+        setTopRecommendation(actionable);
+      }
+      if (benchRes.status === "fulfilled" && benchRes.value) {
+        setBenchmarkData(benchRes.value);
+      }
+    });
+    return () => {
+      active = false;
+    };
   }, [token]);
 
   const today = new Date().toISOString().slice(0, 10);
   const currentMonth = today.slice(0, 7);
-  const currentYear = today.slice(0, 4);
 
   // Filter activities by category if chosen
   const filteredActivities = useMemo(() => {
@@ -100,16 +103,22 @@ export default function Dashboard({
     });
 
     const target = Number(summaryData?.monthlyTargetKg || monthlyTarget || 200);
-    const reduced = Math.max(0, target - monthTotal);
-    const score = summaryData?.sustainabilityScore ?? (monthTotal <= target ? 88 : 65);
+    const effectiveMonth = summaryData?.monthlyCo2eKg ?? Number(monthTotal.toFixed(2));
+    const reduced = summaryData?.totalReducedKg ?? Math.max(0, Number((target - monthTotal).toFixed(2)));
+    const score = summaryData?.sustainabilityScore ?? (effectiveMonth <= target ? 85 : 60);
+    const periodDelta = Number(summaryData?.periodDeltaPercent ?? 0);
+    const weeklyDelta = Number(summaryData?.weeklyDeltaPercent ?? 0);
 
     return {
       total: summaryData?.totalCo2eKg ?? Number(total.toFixed(2)),
       today: summaryData?.todayCo2eKg ?? Number(todayTotal.toFixed(2)),
-      month: summaryData?.monthlyCo2eKg ?? Number(monthTotal.toFixed(2)),
+      month: effectiveMonth,
       target,
-      reduced: summaryData?.totalReducedKg ?? Number(reduced.toFixed(2)),
+      reduced,
       score,
+      periodDelta,
+      weeklyDelta,
+      activityCount: summaryData?.totalAllTimeActivities ?? activities.length,
     };
   }, [activities, summaryData, monthlyTarget, today, currentMonth]);
 
@@ -219,18 +228,26 @@ export default function Dashboard({
           icon={Leaf}
           title="Total Footprint"
           value={`${Number(stats.total).toFixed(1)} kg`}
-          subtitle="Lifetime CO₂e"
-          trend="-12% overall"
-          trendType="positive"
+          subtitle={`${stats.activityCount} activities logged`}
+          trend={
+            stats.periodDelta === 0
+              ? "Baseline period"
+              : `${stats.periodDelta > 0 ? "+" : ""}${stats.periodDelta.toFixed(1)}% vs prev month`
+          }
+          trendType={stats.periodDelta <= 0 ? "positive" : "negative"}
         />
 
         <StatCard
           icon={Calendar}
           title="Today"
           value={`${Number(stats.today).toFixed(2)} kg`}
-          subtitle="Today's activities"
-          trend="Real-time"
-          trendType="neutral"
+          subtitle="Today's emissions"
+          trend={
+            stats.weeklyDelta === 0
+              ? "Steady weekly pace"
+              : `${stats.weeklyDelta > 0 ? "+" : ""}${stats.weeklyDelta.toFixed(1)}% WoW`
+          }
+          trendType={stats.weeklyDelta <= 0 ? "positive" : "neutral"}
         />
 
         <StatCard
@@ -238,7 +255,7 @@ export default function Dashboard({
           title="Monthly Footprint"
           value={`${Number(stats.month).toFixed(1)} kg`}
           subtitle={`Target: ${stats.target} kg`}
-          trend={`${targetPercent}% used`}
+          trend={`${targetPercent}% of budget`}
           trendType={targetPercent > 85 ? "negative" : "positive"}
         />
 
@@ -246,20 +263,61 @@ export default function Dashboard({
           icon={TrendingDown}
           title="Reduced"
           value={`${Number(stats.reduced).toFixed(1)} kg`}
-          subtitle="Saved vs target"
-          trend="+18% saved"
-          trendType="positive"
+          subtitle="Remaining under monthly budget"
+          trend={stats.reduced > 0 ? "On track" : "Over budget"}
+          trendType={stats.reduced > 0 ? "positive" : "negative"}
         />
 
         <StatCard
           icon={Award}
           title="Eco Score"
           value={`${stats.score} / 100`}
-          subtitle="Top 15% rank"
-          trend="Tier A"
-          trendType="positive"
+          subtitle={
+            benchmarkData?.percentileRank != null
+              ? `Top ${Math.max(1, 100 - Math.round(benchmarkData.percentileRank))}% rank`
+              : "Sustainability index"
+          }
+          trend={
+            stats.score >= 85 ? "Tier A" : stats.score >= 65 ? "Tier B" : "Tier C"
+          }
+          trendType={stats.score >= 65 ? "positive" : "neutral"}
         />
       </div>
+
+      {/* First-Time Empty State CTA */}
+      {activities.length === 0 && (
+        <div
+          className="panel"
+          style={{
+            marginBottom: "20px",
+            padding: "20px 24px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+            gap: "16px",
+            borderLeft: "4px solid var(--primary)",
+          }}
+        >
+          <div>
+            <h3 style={{ margin: "0 0 4px", fontSize: "16px", fontWeight: 700 }}>
+              Start your carbon baseline
+            </h3>
+            <p style={{ margin: 0, fontSize: "13.5px", color: "var(--text-muted)" }}>
+              Log your first commute, electricity reading, meal, or waste activity to unlock real-time trends and tailored AI recommendations.
+            </p>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={() => onNavigate("Log Activities")}
+            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+          >
+            <PlusCircle size={16} />
+            <span>Log Your First Activity</span>
+          </button>
+        </div>
+      )}
 
       {/* AI Recommendation Spotlight Card */}
       <div
@@ -465,9 +523,9 @@ export default function Dashboard({
 
       {/* Interactive Charts Grid */}
       <div className="charts-main-grid">
-        {/* Weekly / Monthly Trend Bar Chart */}
+        {/* Weekly / Monthly Trend Chart (Bar or Area toggle) */}
         <div className="panel chart-widget-panel">
-          <div className="widget-header">
+          <div className="widget-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
             <h3>
               {period === "week"
                 ? "Weekly Trend"
@@ -475,11 +533,69 @@ export default function Dashboard({
                 ? "Annual Comparison"
                 : "Daily Trend"}
             </h3>
+            <div style={{ display: "inline-flex", borderRadius: "6px", border: "1px solid var(--border)", overflow: "hidden" }}>
+              <button
+                type="button"
+                onClick={() => setChartType("bar")}
+                style={{
+                  padding: "3px 10px",
+                  fontSize: "0.76rem",
+                  fontWeight: 600,
+                  border: "none",
+                  background: chartType === "bar" ? "var(--emerald)" : "transparent",
+                  color: chartType === "bar" ? "#ffffff" : "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                Bar
+              </button>
+              <button
+                type="button"
+                onClick={() => setChartType("area")}
+                style={{
+                  padding: "3px 10px",
+                  fontSize: "0.76rem",
+                  fontWeight: 600,
+                  border: "none",
+                  background: chartType === "area" ? "var(--emerald)" : "transparent",
+                  color: chartType === "area" ? "#ffffff" : "var(--text-muted)",
+                  cursor: "pointer",
+                }}
+              >
+                Area
+              </button>
+            </div>
           </div>
 
           <div className="widget-chart-area">
             {trendChartData.length === 0 ? (
               <div className="chart-empty-state">No emissions recorded for this timeframe.</div>
+            ) : chartType === "area" ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <AreaChart data={trendChartData}>
+                  <defs>
+                    <linearGradient id="dashboardTrendGradient" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#8D9B72" stopOpacity={0.8} />
+                      <stop offset="95%" stopColor="#8D9B72" stopOpacity={0.05} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
+                  <XAxis dataKey="label" />
+                  <YAxis tickFormatter={(val) => `${val} kg`} />
+                  <Tooltip
+                    formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]}
+                  />
+                  <Area
+                    type="monotone"
+                    dataKey="emissions"
+                    name="Emissions"
+                    stroke="#8D9B72"
+                    strokeWidth={2}
+                    fillOpacity={1}
+                    fill="url(#dashboardTrendGradient)"
+                  />
+                </AreaChart>
+              </ResponsiveContainer>
             ) : (
               <ResponsiveContainer width="100%" height={280}>
                 <BarChart data={trendChartData}>
@@ -526,7 +642,7 @@ export default function Dashboard({
                       `${name} ${(((percent != null ? percent : 0) * 100)).toFixed(0)}%`
                     }
                   >
-                    {categoryChartData.map((entry, idx) => {
+                    {categoryChartData.map((entry) => {
                       const cat = CATEGORIES.find((c) => c.name.toLowerCase() === entry.name.toLowerCase());
                       return (
                         <Cell
@@ -549,7 +665,7 @@ export default function Dashboard({
 
       {/* Target Progress & Quick Recent Activities */}
       <div className="dashboard-bottom-grid">
-        {/* Monthly Target Gauge / Progress Box */}
+        {/* Monthly Target Gauge / Progress Box with Radial Progress Indicator */}
         <div className="panel target-progress-card">
           <div className="target-card-header">
             <div className="icon-badge bg-emerald">
@@ -560,27 +676,75 @@ export default function Dashboard({
             </div>
           </div>
 
-          <div className="target-progress-bar-wrap">
-            <div className="progress-bar-meta">
-              <span>{Number(stats.month).toFixed(1)} kg used</span>
-              <strong>{targetPercent}%</strong>
+          <div style={{ display: "flex", alignItems: "center", gap: "18px", margin: "12px 0" }}>
+            {/* Circular Gauge */}
+            <div style={{ position: "relative", width: 68, height: 68, flexShrink: 0 }}>
+              <svg width="68" height="68" viewBox="0 0 68 68">
+                <circle
+                  cx="34"
+                  cy="34"
+                  r="28"
+                  stroke="var(--bg-subtle)"
+                  strokeWidth="6"
+                  fill="transparent"
+                />
+                <circle
+                  cx="34"
+                  cy="34"
+                  r="28"
+                  stroke={targetPercent > 85 ? "#ef4444" : "var(--emerald)"}
+                  strokeWidth="6"
+                  fill="transparent"
+                  strokeDasharray={2 * Math.PI * 28}
+                  strokeDashoffset={2 * Math.PI * 28 * (1 - Math.min(targetPercent, 100) / 100)}
+                  strokeLinecap="round"
+                  transform="rotate(-90 34 34)"
+                  style={{ transition: "stroke-dashoffset 0.5s ease" }}
+                />
+                <text
+                  x="34"
+                  y="38"
+                  textAnchor="middle"
+                  fontSize="12"
+                  fontWeight="700"
+                  fill="var(--text-main)"
+                >
+                  {targetPercent}%
+                </text>
+              </svg>
             </div>
-            <div className="progress-track">
-              <div
-                className={`progress-fill ${targetPercent > 85 ? "warn" : ""}`}
-                style={{ width: `${targetPercent}%` }}
-              />
+
+            <div style={{ flex: 1 }}>
+              <div className="progress-bar-meta" style={{ marginBottom: "6px" }}>
+                <span style={{ fontSize: "0.85rem", color: "var(--text-muted)" }}>{Number(stats.month).toFixed(1)} kg consumed</span>
+                <strong style={{ fontSize: "0.85rem", color: targetPercent > 85 ? "#ef4444" : "var(--emerald)" }}>
+                  {Math.max(0, monthlyTarget - Number(stats.month)).toFixed(1)} kg left
+                </strong>
+              </div>
+              <div className="progress-track" style={{ height: 8, background: "var(--bg-subtle)", borderRadius: 999, overflow: "hidden" }}>
+                <div
+                  className={`progress-fill ${targetPercent > 85 ? "warn" : ""}`}
+                  style={{
+                    width: `${Math.min(targetPercent, 100)}%`,
+                    height: "100%",
+                    background: targetPercent > 85 ? "#ef4444" : "var(--emerald)",
+                    borderRadius: 999,
+                    transition: "width 0.4s ease",
+                  }}
+                />
+              </div>
             </div>
-            <div className="progress-footer-text">
-              <span>Remaining allowance: <strong>{Number(stats.reduced).toFixed(1)} kg</strong></span>
-              <button
-                type="button"
-                className="btn-link-action"
-                onClick={() => onNavigate("Goals")}
-              >
-                Manage Goals <ArrowRight size={14} />
-              </button>
-            </div>
+          </div>
+
+          <div className="progress-footer-text">
+            <span>Monthly limit: <strong>{monthlyTarget} kg</strong></span>
+            <button
+              type="button"
+              className="btn-link-action"
+              onClick={() => onNavigate("Goals")}
+            >
+              Manage Goals <ArrowRight size={14} />
+            </button>
           </div>
         </div>
 

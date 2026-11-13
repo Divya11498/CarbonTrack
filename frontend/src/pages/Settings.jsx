@@ -1,241 +1,276 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
-  Settings as SettingsIcon,
-  Moon,
   Sun,
+  Moon,
   Bell,
-  Scale,
   Shield,
-  Download,
-  Trash2,
   CheckCircle2,
+  Download,
+  RefreshCw,
 } from "lucide-react";
 import { useTheme } from "../context/ThemeContext";
+import { apiRequest } from "../api";
 
-export default function Settings({ activities = [] }) {
-  const { theme, toggleTheme } = useTheme();
-  const [preferredUnit, setPreferredUnit] = useState("kgCO2e");
-  const [notifyGoals, setNotifyGoals] = useState(true);
-  const [notifyTips, setNotifyTips] = useState(true);
-  const [notifyLeaderboard, setNotifyLeaderboard] = useState(false);
-  const [savedNotice, setSavedNotice] = useState("");
+export default function Settings({ token, userEmail }) {
+  const { isDark, toggleTheme } = useTheme();
+  const [unit, setUnit] = useState("kgCO2e");
+  const [timezone, setTimezone] = useState("UTC");
+  const [emailNotifications, setEmailNotifications] = useState(true);
+  const [weeklyReport, setWeeklyReport] = useState(true);
+  const [goalAlerts, setGoalAlerts] = useState(true);
+  const [leaderboardAnonymized, setLeaderboardAnonymized] = useState(false);
 
-  const handleSaveSettings = () => {
-    setSavedNotice("Preferences saved successfully!");
-    setTimeout(() => setSavedNotice(""), 3000);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [savedNotice, setSavedNotice] = useState(false);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    async function loadPreferences() {
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      setLoading(true);
+      try {
+        const res = await apiRequest("/api/users/profile", { token });
+        if (res) {
+          setUnit(res.preferredUnit || "kgCO2e");
+          setTimezone(res.timezone || "UTC");
+          setEmailNotifications(res.emailNotifications !== false);
+          setWeeklyReport(res.weeklyReportEnabled !== false);
+          setGoalAlerts(res.goalAlertsEnabled !== false);
+          setLeaderboardAnonymized(Boolean(res.leaderboardAnonymized));
+        }
+      } catch (err) {
+        setError(err.message || "Unable to load saved preferences.");
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadPreferences();
+  }, [token]);
+
+  const handleSavePreferences = async () => {
+    if (!token) return;
+    setSaving(true);
+    setError("");
+    setSavedNotice(false);
+    try {
+      await apiRequest("/api/users/profile", {
+        method: "PUT",
+        token,
+        body: {
+          preferredUnit: unit,
+          timezone,
+          emailNotifications,
+          weeklyReportEnabled: weeklyReport,
+          goalAlertsEnabled: goalAlerts,
+          leaderboardAnonymized,
+        },
+      });
+      setSavedNotice(true);
+      setTimeout(() => setSavedNotice(false), 3000);
+    } catch (err) {
+      setError(err.message || "Failed to save preferences.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const handleExportData = () => {
-    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(activities, null, 2));
-    const downloadAnchor = document.createElement("a");
-    downloadAnchor.setAttribute("href", dataStr);
-    downloadAnchor.setAttribute("download", `carbontrack_export_${new Date().toISOString().slice(0, 10)}.json`);
-    document.body.appendChild(downloadAnchor);
-    downloadAnchor.click();
-    downloadAnchor.remove();
+  const handleExportAccountData = async () => {
+    try {
+      const [profileRes, actsRes, goalsRes] = await Promise.all([
+        apiRequest("/api/users/profile", { token }),
+        apiRequest("/api/activities", { token }),
+        apiRequest("/api/goals", { token }),
+      ]);
+      const exportPayload = {
+        exportedAt: new Date().toISOString(),
+        profile: profileRes,
+        activities: actsRes,
+        goals: goalsRes,
+      };
+      const blob = new Blob([JSON.stringify(exportPayload, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `carbontrack-data-${new Date().toISOString().split("T")[0]}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setError(err.message || "Could not export account data.");
+    }
   };
 
   return (
-    <div className="settings-page-wrapper">
-      <div className="page-heading">
-        <h2>Application Settings ⚙️</h2>
-        <p>Configure interface themes, calculation units, notifications, and privacy options.</p>
+    <div className="settings-page">
+      <div className="page-header-row" style={{ flexWrap: "wrap", gap: "12px" }}>
+        <div>
+          <h2 className="page-title">System & Notification Settings</h2>
+          <p className="page-subtitle">
+            Manage visual theme, carbon units, email digests, and leaderboard privacy (persisted to your account).
+          </p>
+        </div>
+
+        <button
+          type="button"
+          className="btn-primary-gradient"
+          onClick={handleSavePreferences}
+          disabled={saving || loading}
+        >
+          {saving ? <RefreshCw size={15} className="spin-slow" /> : <CheckCircle2 size={15} />}
+          <span>{saving ? "Saving..." : "Save Settings"}</span>
+        </button>
       </div>
 
-      <div className="settings-cards-stack">
-        {/* Appearance & Theme */}
-        <div className="panel settings-card">
-          <div className="settings-card-header">
-            <div className="icon-badge bg-green">
-              {theme === "dark" ? <Moon size={20} /> : <Sun size={20} />}
-            </div>
-            <div>
-              <h3>Appearance & Theme</h3>
-              <p>Customize the visual style of your CarbonTrack dashboard.</p>
-            </div>
+      {savedNotice && (
+        <div className="badge-pill-green" style={{ padding: "10px 14px", marginBottom: "16px", display: "inline-flex", alignItems: "center", gap: "8px" }}>
+          <CheckCircle2 size={16} />
+          <span>Settings saved to your CarbonTrack profile.</span>
+        </div>
+      )}
+
+      {error && <div className="alert-error" style={{ marginBottom: "16px" }}>{error}</div>}
+
+      <div className="settings-grid">
+        {/* Appearance */}
+        <section className="card-panel" style={{ padding: "22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+            {isDark ? <Moon size={19} style={{ color: "var(--primary)" }} /> : <Sun size={19} style={{ color: "var(--primary)" }} />}
+            <h3 style={{ margin: 0 }}>Appearance & Units</h3>
           </div>
 
-          <div className="settings-card-body">
-            <div className="theme-selection-grid">
-              <div
-                className={`theme-option-box ${theme === "light" ? "selected" : ""}`}
-                onClick={() => { if (theme === "dark") toggleTheme(); }}
-              >
-                <div className="theme-preview-box light-preview">
-                  <div className="preview-nav-mock"></div>
-                  <div className="preview-body-mock"></div>
-                </div>
-                <span>Light Mode</span>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: "14px", borderBottom: "1px solid var(--border-subtle)" }}>
+            <div>
+              <strong>Theme Mode</strong>
+              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                Active: {isDark ? "Dark Charcoal Mode" : "Light Earth Cream Mode"}
+              </p>
+            </div>
+            <button type="button" className="btn-outline" onClick={toggleTheme}>
+              {isDark ? "Switch to Light" : "Switch to Dark"}
+            </button>
+          </div>
+
+          <div className="form-group" style={{ marginTop: "14px" }}>
+            <label htmlFor="pref-unit">Preferred Emission Unit</label>
+            <select
+              id="pref-unit"
+              className="form-input"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+            >
+              <option value="kgCO2e">Kilograms CO₂e (kgCO₂e)</option>
+              <option value="gCO2e">Grams CO₂e (gCO₂e)</option>
+              <option value="lbCO2e">Pounds CO₂e (lbCO₂e)</option>
+            </select>
+          </div>
+
+          <div className="form-group" style={{ marginTop: "12px" }}>
+            <label htmlFor="pref-tz">Timezone</label>
+            <select
+              id="pref-tz"
+              className="form-input"
+              value={timezone}
+              onChange={(e) => setTimezone(e.target.value)}
+            >
+              <option value="UTC">UTC</option>
+              <option value="Asia/Kolkata">Asia/Kolkata (IST)</option>
+              <option value="America/New_York">America/New_York (EST)</option>
+              <option value="Europe/London">Europe/London (GMT)</option>
+              <option value="Asia/Tokyo">Asia/Tokyo (JST)</option>
+              <option value="Australia/Sydney">Australia/Sydney (AEST)</option>
+            </select>
+          </div>
+        </section>
+
+        {/* Notifications & Email Preferences */}
+        <section className="card-panel" style={{ padding: "22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+            <Bell size={19} style={{ color: "var(--primary)" }} />
+            <h3 style={{ margin: 0 }}>Email & Alert Preferences</h3>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+            <label style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", cursor: "pointer" }}>
+              <div>
+                <strong>Email Notifications</strong>
+                <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                  Receive account emails, achievement notifications, and updates{userEmail ? ` at ${userEmail}` : ""}.
+                </p>
               </div>
+              <input
+                type="checkbox"
+                checked={emailNotifications}
+                onChange={(e) => setEmailNotifications(e.target.checked)}
+              />
+            </label>
 
-              <div
-                className={`theme-option-box ${theme === "dark" ? "selected" : ""}`}
-                onClick={() => { if (theme === "light") toggleTheme(); }}
-              >
-                <div className="theme-preview-box dark-preview">
-                  <div className="preview-nav-mock"></div>
-                  <div className="preview-body-mock"></div>
-                </div>
-                <span>Dark Mode</span>
+            <label style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", cursor: "pointer" }}>
+              <div>
+                <strong>Weekly Sustainability Digest</strong>
+                <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                  Weekly summary of total emissions, category highlights, and week-over-week trends.
+                </p>
               </div>
-            </div>
-          </div>
-        </div>
+              <input
+                type="checkbox"
+                checked={weeklyReport}
+                onChange={(e) => setWeeklyReport(e.target.checked)}
+              />
+            </label>
 
-        {/* Units of Measurement */}
-        <div className="panel settings-card">
-          <div className="settings-card-header">
-            <div className="icon-badge bg-emerald">
-              <Scale size={20} />
-            </div>
+            <label style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", cursor: "pointer" }}>
+              <div>
+                <strong>Goal Milestone & Pace Alerts</strong>
+                <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                  Alerts when goals are achieved or projected to overshoot target caps.
+                </p>
+              </div>
+              <input
+                type="checkbox"
+                checked={goalAlerts}
+                onChange={(e) => setGoalAlerts(e.target.checked)}
+              />
+            </label>
+          </div>
+        </section>
+
+        {/* Privacy & Data Portability */}
+        <section className="card-panel" style={{ padding: "22px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "16px" }}>
+            <Shield size={19} style={{ color: "var(--primary)" }} />
+            <h3 style={{ margin: 0 }}>Privacy & Data Export</h3>
+          </div>
+
+          <label style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: "12px", cursor: "pointer", paddingBottom: "16px", borderBottom: "1px solid var(--border-subtle)" }}>
             <div>
-              <h3>Measurement Units</h3>
-              <p>Choose your preferred greenhouse gas emission metric unit.</p>
+              <strong>Anonymize Me on Public Leaderboard</strong>
+              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                Show an anonymized handle (Eco Tracker #ID) instead of your display name.
+              </p>
             </div>
-          </div>
+            <input
+              type="checkbox"
+              checked={leaderboardAnonymized}
+              onChange={(e) => setLeaderboardAnonymized(e.target.checked)}
+            />
+          </label>
 
-          <div className="settings-card-body">
-            <div className="units-radio-group">
-              <label className="radio-option">
-                <input
-                  type="radio"
-                  name="unit"
-                  value="kgCO2e"
-                  checked={preferredUnit === "kgCO2e"}
-                  onChange={(e) => setPreferredUnit(e.target.value)}
-                />
-                <div>
-                  <strong>Kilograms of CO₂e (kgCO2e)</strong>
-                  <p>Standard scientific metric used across IPCC and EPA reports (Recommended).</p>
-                </div>
-              </label>
-
-              <label className="radio-option">
-                <input
-                  type="radio"
-                  name="unit"
-                  value="lbCO2e"
-                  checked={preferredUnit === "lbCO2e"}
-                  onChange={(e) => setPreferredUnit(e.target.value)}
-                />
-                <div>
-                  <strong>Pounds of CO₂e (lbCO2e)</strong>
-                  <p>Imperial units for US regional standards.</p>
-                </div>
-              </label>
-
-              <label className="radio-option">
-                <input
-                  type="radio"
-                  name="unit"
-                  value="gCO2e"
-                  checked={preferredUnit === "gCO2e"}
-                  onChange={(e) => setPreferredUnit(e.target.value)}
-                />
-                <div>
-                  <strong>Grams of CO₂e (gCO2e)</strong>
-                  <p>High-precision metric suitable for micro-emission audits.</p>
-                </div>
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Notification Preferences */}
-        <div className="panel settings-card">
-          <div className="settings-card-header">
-            <div className="icon-badge bg-lime">
-              <Bell size={20} />
-            </div>
+          <div style={{ marginTop: "16px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: "12px", flexWrap: "wrap" }}>
             <div>
-              <h3>Notifications & Alerts</h3>
-              <p>Control what updates and milestone alerts you receive.</p>
+              <strong>Download Personal Carbon Archive</strong>
+              <p style={{ margin: "2px 0 0", fontSize: "0.84rem", color: "var(--text-muted)" }}>
+                Export your profile, activities, and sustainability goals as JSON.
+              </p>
             </div>
+            <button type="button" className="btn-outline" onClick={handleExportAccountData}>
+              <Download size={15} />
+              <span>Export Data</span>
+            </button>
           </div>
-
-          <div className="settings-card-body">
-            <div className="toggle-list">
-              <label className="toggle-item">
-                <div className="toggle-info">
-                  <strong>Weekly Goal Progress Reminders</strong>
-                  <p>Get notified when your weekly carbon budget is close to target threshold.</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifyGoals}
-                  onChange={(e) => setNotifyGoals(e.target.checked)}
-                />
-              </label>
-
-              <label className="toggle-item">
-                <div className="toggle-info">
-                  <strong>Personalized High-Emission Tips</strong>
-                  <p>Receive actionable suggestions when an activity spikes your emissions.</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifyTips}
-                  onChange={(e) => setNotifyTips(e.target.checked)}
-                />
-              </label>
-
-              <label className="toggle-item">
-                <div className="toggle-info">
-                  <strong>Community Leaderboard Updates</strong>
-                  <p>Monthly digest when leaderboard rankings reset.</p>
-                </div>
-                <input
-                  type="checkbox"
-                  checked={notifyLeaderboard}
-                  onChange={(e) => setNotifyLeaderboard(e.target.checked)}
-                />
-              </label>
-            </div>
-          </div>
-        </div>
-
-        {/* Data & Privacy */}
-        <div className="panel settings-card">
-          <div className="settings-card-header">
-            <div className="icon-badge bg-emerald">
-              <Shield size={20} />
-            </div>
-            <div>
-              <h3>Data Portability & Privacy</h3>
-              <p>Download your historical footprint records or manage privacy.</p>
-            </div>
-          </div>
-
-          <div className="settings-card-body">
-            <div className="data-actions-row">
-              <button
-                type="button"
-                className="btn-export-data"
-                onClick={handleExportData}
-              >
-                <Download size={16} />
-                Export My Carbon Activity Data (.JSON)
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {savedNotice && (
-          <div className="auth-success-banner" role="status">
-            <CheckCircle2 size={16} />
-            <span>{savedNotice}</span>
-          </div>
-        )}
-
-        <div className="settings-save-bar">
-          <button
-            type="button"
-            className="btn-primary-settings"
-            onClick={handleSaveSettings}
-          >
-            Save Preferences
-          </button>
-        </div>
+        </section>
       </div>
     </div>
   );

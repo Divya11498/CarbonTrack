@@ -1,5 +1,3 @@
-import React from "react";
-
 /**
  * CarbonTrack Brand Identity Logo
  * Combines an organic leaf silhouette with an analytics circular progress arc,

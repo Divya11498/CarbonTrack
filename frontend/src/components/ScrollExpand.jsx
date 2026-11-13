@@ -15,12 +15,16 @@ export default function ScrollExpand({
   targetScale = 1.0,
 }) {
   const containerRef = useRef(null);
-  const [scrollProgress, setScrollProgress] = useState(0);
+  const [scrollProgress, setScrollProgress] = useState(() =>
+    typeof window !== "undefined" &&
+    window.matchMedia("(prefers-reduced-motion: reduce)").matches
+      ? 1
+      : 0
+  );
 
   useEffect(() => {
     // Respect reduced motion preference
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      setScrollProgress(1);
       return;
     }
 

@@ -46,16 +46,28 @@ public class UserController {
                     return userProfileRepository.save(newProfile);
                 });
 
+        String avatarUrl = user.getAvatarUrl();
+        if (avatarUrl == null || avatarUrl.isBlank()) {
+            String seed = user.getAvatarSeed() != null ? user.getAvatarSeed() : "ct-" + user.getId() + "-" + Integer.toHexString(user.getEmail().hashCode());
+            avatarUrl = "https://blobatar.dev/avatar/" + seed + "?gen=2";
+        }
+
         Map<String, Object> data = new HashMap<>();
         data.put("id", user.getId());
         data.put("email", user.getEmail());
         data.put("firstName", user.getFirstName());
         data.put("lastName", user.getLastName());
         data.put("displayName", user.getDisplayName());
-        data.put("avatarUrl", user.getAvatarUrl());
+        data.put("avatarUrl", avatarUrl);
+        data.put("avatarSeed", user.getAvatarSeed());
         data.put("role", user.getRole());
+        data.put("department", user.getDepartment());
         data.put("timezone", user.getTimezone());
         data.put("preferredUnit", user.getPreferredUnit());
+        data.put("emailNotifications", Boolean.TRUE.equals(user.getEmailNotifications()));
+        data.put("weeklyReportEnabled", Boolean.TRUE.equals(user.getWeeklyReportEnabled()));
+        data.put("goalAlertsEnabled", Boolean.TRUE.equals(user.getGoalAlertsEnabled()));
+        data.put("leaderboardAnonymized", Boolean.TRUE.equals(user.getLeaderboardAnonymized()));
         data.put("createdAt", user.getCreatedAt());
 
         data.put("country", profile.getCountry());
@@ -97,6 +109,28 @@ public class UserController {
         }
         if (payload.containsKey("timezone")) {
             user.setTimezone((String) payload.get("timezone"));
+        }
+        if (payload.containsKey("department")) {
+            user.setDepartment((String) payload.get("department"));
+        }
+        if (payload.containsKey("avatarSeed")) {
+            String seed = payload.get("avatarSeed") != null ? payload.get("avatarSeed").toString().trim() : null;
+            user.setAvatarSeed(seed);
+            if (seed != null && !seed.isEmpty() && (!payload.containsKey("avatarUrl") || payload.get("avatarUrl") == null || payload.get("avatarUrl").toString().isBlank())) {
+                user.setAvatarUrl("https://blobatar.dev/avatar/" + seed + "?gen=2");
+            }
+        }
+        if (payload.containsKey("emailNotifications") && payload.get("emailNotifications") != null) {
+            user.setEmailNotifications(Boolean.valueOf(payload.get("emailNotifications").toString()));
+        }
+        if (payload.containsKey("weeklyReportEnabled") && payload.get("weeklyReportEnabled") != null) {
+            user.setWeeklyReportEnabled(Boolean.valueOf(payload.get("weeklyReportEnabled").toString()));
+        }
+        if (payload.containsKey("goalAlertsEnabled") && payload.get("goalAlertsEnabled") != null) {
+            user.setGoalAlertsEnabled(Boolean.valueOf(payload.get("goalAlertsEnabled").toString()));
+        }
+        if (payload.containsKey("leaderboardAnonymized") && payload.get("leaderboardAnonymized") != null) {
+            user.setLeaderboardAnonymized(Boolean.valueOf(payload.get("leaderboardAnonymized").toString()));
         }
         userRepository.save(user);
 

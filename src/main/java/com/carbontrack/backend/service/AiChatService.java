@@ -1,11 +1,13 @@
 package com.carbontrack.backend.service;
 
 import com.carbontrack.backend.entity.ActivityLog;
+import com.carbontrack.backend.entity.EmissionFactor;
 import com.carbontrack.backend.entity.Goal;
 import com.carbontrack.backend.entity.Organization;
 import com.carbontrack.backend.entity.OrganizationMember;
 import com.carbontrack.backend.entity.User;
 import com.carbontrack.backend.repository.ActivityLogRepository;
+import com.carbontrack.backend.repository.EmissionFactorRepository;
 import com.carbontrack.backend.repository.GoalRepository;
 import com.carbontrack.backend.repository.OrganizationMemberRepository;
 import com.carbontrack.backend.repository.OrganizationRepository;
@@ -38,6 +40,7 @@ public class AiChatService {
     private final RecommendationRepository recommendationRepository;
     private final OrganizationMemberRepository organizationMemberRepository;
     private final OrganizationRepository organizationRepository;
+    private final EmissionFactorRepository emissionFactorRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient;
 
@@ -80,12 +83,14 @@ public class AiChatService {
             GoalRepository goalRepository,
             RecommendationRepository recommendationRepository,
             OrganizationMemberRepository organizationMemberRepository,
-            OrganizationRepository organizationRepository) {
+            OrganizationRepository organizationRepository,
+            EmissionFactorRepository emissionFactorRepository) {
         this.activityLogRepository = activityLogRepository;
         this.goalRepository = goalRepository;
         this.recommendationRepository = recommendationRepository;
         this.organizationMemberRepository = organizationMemberRepository;
         this.organizationRepository = organizationRepository;
+        this.emissionFactorRepository = emissionFactorRepository;
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(6))
                 .build();
@@ -166,7 +171,7 @@ public class AiChatService {
                 Map<String, Object> response = new LinkedHashMap<>();
                 response.put("reply", reply);
                 response.put("isConfigured", true);
-                response.put("aiModel", "Gemini 3.5 Flash");
+                response.put("aiModel", "Gemini Flash Latest");
                 response.put("timestamp", OffsetDateTime.now());
                 return response;
             } catch (Exception e) {
@@ -218,7 +223,7 @@ public class AiChatService {
             long completedActions,
             String orgInfo) throws Exception {
 
-        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + geminiApiKey;
+        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=" + geminiApiKey;
 
         // Build system prompt
         StringBuilder systemPrompt = new StringBuilder();
@@ -233,7 +238,16 @@ public class AiChatService {
         systemPrompt.append(String.format("- Active Goal / Budget: %s\n", goalSummary));
         systemPrompt.append(String.format("- Verified Carbon Saved To Date: %s kg CO2e\n", actualSavings.setScale(1, RoundingMode.HALF_UP)));
         systemPrompt.append(String.format("- Completed Sustainable Actions: %d\n", completedActions));
-        systemPrompt.append(String.format("- Organization Affiliation: %s\n\n", orgInfo));
+        systemPrompt.append(String.format("- Organization Affiliation: %s\n", orgInfo));
+        systemPrompt.append("- Key Active Database Emission Factors (kg CO2e per unit):\n");
+        emissionFactorRepository.findAll().stream()
+                .filter(f -> Boolean.TRUE.equals(f.getIsActive()))
+                .limit(16)
+                .forEach(f -> {
+                    String actLabel = ACTIVITY_NAMES.getOrDefault(f.getActivityTypeId(), "Activity #" + f.getActivityTypeId());
+                    systemPrompt.append(String.format("  * %s: %s kg CO2e/%s\n", actLabel, f.getFactorValue(), f.getUnit()));
+                });
+        systemPrompt.append("\n");
 
         if (context != null && !context.isBlank()) {
             systemPrompt.append(String.format("RECOMMENDATION CONTEXT SELECTED BY USER:\n\"%s\"\n\n", context));
@@ -285,7 +299,7 @@ public class AiChatService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(geminiEndpoint))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(12))
+                .timeout(Duration.ofSeconds(25))
                 .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                 .build();
 

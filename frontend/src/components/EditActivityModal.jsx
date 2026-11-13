@@ -31,7 +31,7 @@ export default function EditActivityModal({ activity, onClose, onSave }) {
         if (!cancelled && res?.co2eKg != null) {
           setPreviewCo2(res.co2eKg);
         }
-      } catch (err) {
+      } catch {
         // Silently keep previous preview or show inline
       } finally {
         if (!cancelled) setCalculating(false);

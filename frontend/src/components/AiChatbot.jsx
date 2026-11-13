@@ -1,339 +1,310 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-  MessageSquare,
-  Sparkles,
-  X,
   Send,
-  RotateCcw,
+  X,
   Bot,
-  User,
-  ArrowRight,
-  ChevronDown,
-  AlertCircle,
-  CheckCircle2,
-  Leaf,
+  Sparkles,
+  RefreshCw,
+  AlertTriangle,
+  RotateCcw,
 } from "lucide-react";
 import { apiRequest } from "../api";
 
-const STARTER_PROMPTS = [
-  "How can I reduce my carbon footprint?",
-  "Which activity produces my highest emissions?",
-  "How can I cut my electricity consumption?",
-  "What are my sustainability recommendations?",
-  "How much carbon have I saved this month?",
-  "How can my organization reduce emissions?",
+const STARTER_SUGGESTIONS = [
+  "What is driving my emissions the most?",
+  "How can I save 20 kg of CO₂e this month?",
+  "Analyze my recent electricity and food impact",
+  "Suggest an achievable weekly sustainability goal",
 ];
 
-export default function AiChatbot({
-  token,
-  isOpen,
-  onToggle,
-  initialContext = null,
-  onClearContext,
-}) {
-  const [messages, setMessages] = useState([
-    {
-      id: "welcome-1",
-      role: "assistant",
-      content:
-        "Hello! I am **CarbonTrack AI**, your sustainability advisor. I can analyze your emissions history, suggest practical ways to reduce your footprint, or break down any recommendation into easy steps.\n\nHow can I help you today?",
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    },
-  ]);
+const INITIAL_WELCOME = {
+  role: "assistant",
+  content:
+    "Hi! I'm **CarbonTrack AI**, your personalized sustainability coach. I analyze your real activity logs, emission factors, and goals to suggest high-impact reductions. What would you like to improve today?",
+  isConfigured: true,
+};
+
+export default function AiChatbot({ token, isOpen, onToggle, onClose, initialContext = "", onClearContext }) {
+  const [messages, setMessages] = useState([INITIAL_WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [lastFailedPrompt, setLastFailedPrompt] = useState(null);
+  const [isAiConfigured, setIsAiConfigured] = useState(true);
   const messagesEndRef = useRef(null);
-  const inputRef = useRef(null);
+  const contextHandledRef = useRef("");
 
-  // Auto-scroll to bottom of messages
   useEffect(() => {
-    if (isOpen) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (isOpen && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, loading, isOpen]);
+  }, [messages, isOpen]);
 
-  // Focus input when opened
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => inputRef.current?.focus(), 150);
+    if (isOpen && initialContext && initialContext !== contextHandledRef.current) {
+      contextHandledRef.current = initialContext;
+      handleSendMessage(
+        `Please explain how I can implement this recommendation and estimate my exact carbon reduction impact: "${initialContext}"`,
+        initialContext
+      );
     }
-  }, [isOpen]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, initialContext]);
 
-  // Handle external contextual prompt injection (e.g. from recommendation cards)
-  useEffect(() => {
-    if (initialContext && isOpen) {
-      const promptText = `Can you guide me on practical steps to implement the recommendation: "${initialContext.title}"? Problem identified: ${initialContext.problemIdentified || initialContext.description || ""}`;
-      handleSend(promptText, initialContext.title);
-      if (onClearContext) onClearContext();
-    }
-  }, [initialContext, isOpen]);
-
-  async function handleSend(textToSend = null, contextOverride = null) {
-    const query = (textToSend || input).trim();
+  const handleSendMessage = async (textOverride = null, contextVal = "") => {
+    const query = (textOverride !== null ? textOverride : input).trim();
     if (!query || loading) return;
 
-    setError("");
-    const userMsg = {
-      id: "user-" + Date.now(),
-      role: "user",
-      content: query,
-      timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-    };
+    const history = messages
+      .filter((m) => m.role === "user" || m.role === "assistant")
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
 
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
+    const nextUserMsg = { role: "user", content: query };
+    setMessages((prev) => [...prev, nextUserMsg]);
+    if (textOverride === null) {
+      setInput("");
+    }
+    setLastFailedPrompt(null);
     setLoading(true);
 
     try {
-      // Build lightweight conversation history
-      const historyPayload = messages.slice(-6).map((m) => ({
-        role: m.role === "user" ? "user" : "assistant",
-        content: m.content,
-      }));
-
-      const res = await apiRequest("/api/ai/chat", {
+      const data = await apiRequest("/api/ai/chat", {
         method: "POST",
         token,
         body: {
           message: query,
-          context: contextOverride || (initialContext ? initialContext.title : null),
-          history: historyPayload,
+          context: contextVal || initialContext || "",
+          history,
         },
       });
 
-      const replyContent = res?.reply || "I couldn't generate a response. Please try again.";
-      const assistantMsg = {
-        id: "ai-" + Date.now(),
-        role: "assistant",
-        content: replyContent,
-        aiModel: res?.aiModel || "CarbonTrack AI",
-        isConfigured: res?.isConfigured !== false,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-
-      setMessages((prev) => [...prev, assistantMsg]);
+      setIsAiConfigured(data?.isConfigured !== false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          content: data?.reply || "I processed your request, please ask a follow-up question.",
+          isConfigured: data?.isConfigured !== false,
+          aiModel: data?.aiModel || "CarbonTrack AI",
+        },
+      ]);
     } catch (err) {
-      setError(err.message || "Failed to contact CarbonTrack AI.");
-      const errorMsg = {
-        id: "err-" + Date.now(),
-        role: "assistant",
-        content: `⚠️ **Connection Error:** ${err.message || "Unable to reach the AI service. Please ensure the backend is running."}`,
-        isError: true,
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      };
-      setMessages((prev) => [...prev, errorMsg]);
+      // Preserve user prompt on error and enable explicit one-click Retry
+      if (textOverride === null) {
+        setInput(query);
+      }
+      setLastFailedPrompt({ query, contextVal });
+      setMessages((prev) => [
+        ...prev,
+        {
+          role: "assistant",
+          isError: true,
+          content: `Request could not be completed: ${err.message || "Network or service error"}.`,
+        },
+      ]);
     } finally {
       setLoading(false);
     }
-  }
+  };
 
-  function handleResetChat() {
-    setMessages([
-      {
-        id: "welcome-reset",
-        role: "assistant",
-        content:
-          "Conversation reset. What sustainability questions can I help you with now?",
-        timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      },
-    ]);
-    setError("");
-  }
+  const handleRetry = () => {
+    if (!lastFailedPrompt || loading) return;
+    const { query, contextVal } = lastFailedPrompt;
+    handleSendMessage(query, contextVal);
+  };
 
-  // Format markdown helper (bold, bullet points, linebreaks)
-  function renderFormattedContent(text) {
-    if (!text) return null;
+  const handleClearChat = () => {
+    setMessages([INITIAL_WELCOME]);
+    setLastFailedPrompt(null);
+    contextHandledRef.current = "";
+  };
 
-    const lines = text.split("\n");
-    return lines.map((line, i) => {
-      // Bold regex: **text**
-      const parts = line.split(/(\*\*.*?\*\*)/g);
-      const renderedLine = parts.map((part, pIdx) => {
-        if (part.startsWith("**") && part.endsWith("**")) {
-          return <strong key={pIdx}>{part.slice(2, -2)}</strong>;
-        }
-        return part;
-      });
+  const handleKeyDown = (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSendMessage();
+    }
+  };
 
-      if (line.trim().startsWith("•") || line.trim().startsWith("-") || line.trim().startsWith("*")) {
-        return (
-          <div key={i} style={{ display: "flex", gap: "6px", margin: "3px 0", paddingLeft: "4px" }}>
-            <span style={{ color: "var(--primary)", fontWeight: "bold" }}>•</span>
-            <span>{renderedLine}</span>
-          </div>
-        );
-      }
+  const handleClose = () => {
+    if (onClose) onClose();
+    else if (onToggle) onToggle();
+  };
 
-      if (line.trim() === "") {
-        return <div key={i} style={{ height: "6px" }} />;
-      }
-
-      return <p key={i} style={{ margin: "2px 0", lineHeight: "1.5" }}>{renderedLine}</p>;
-    });
+  if (!isOpen) {
+    return (
+      <button
+        type="button"
+        className="ai-fab-btn"
+        onClick={() => (onToggle ? onToggle() : onClose && onClose())}
+        aria-label="Open CarbonTrack AI Assistant"
+        title="Ask CarbonTrack AI"
+      >
+        <Sparkles size={20} />
+        <span>Ask AI</span>
+      </button>
+    );
   }
 
   return (
-    <>
-      {/* Floating Chat Launcher Button (Bottom-Right) */}
-      <button
-        type="button"
-        className={`floating-ai-launcher ${isOpen ? "active" : ""}`}
-        onClick={onToggle}
-        aria-label={isOpen ? "Close CarbonTrack AI" : "Open CarbonTrack AI"}
-        title={isOpen ? "Close AI Advisor" : "Ask CarbonTrack AI"}
-      >
-        {isOpen ? (
-          <X size={22} />
-        ) : (
-          <>
-            <div className="launcher-icon-wrap">
-              <Sparkles size={20} />
-              <span className="online-indicator-dot" />
+    <div className="ai-chatbot-overlay" onClick={handleClose}>
+      <div className="ai-chatbot-drawer" onClick={(e) => e.stopPropagation()}>
+        <div className="chatbot-header">
+          <div className="chatbot-title-wrap">
+            <div className="chatbot-icon-badge">
+              <Bot size={20} />
             </div>
-            <span className="launcher-label">Ask AI</span>
-          </>
-        )}
-      </button>
-
-      {/* Modern Floating AI Chat Panel */}
-      {isOpen && (
-        <div className="ai-chatbot-panel" role="dialog" aria-label="CarbonTrack AI Assistant">
-          {/* Header */}
-          <div className="chatbot-header">
-            <div className="chatbot-header-brand">
-              <div className="chatbot-avatar-badge">
-                <Sparkles size={18} />
-                <span className="status-badge-dot" />
-              </div>
-              <div className="chatbot-header-text">
-                <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-                  <h4>CarbonTrack AI</h4>
-                  <span className="chatbot-online-pill">Online</span>
-                </div>
-                <p>Personalized Sustainability Advisor</p>
-              </div>
-            </div>
-
-            <div className="chatbot-header-actions">
-              <button
-                type="button"
-                className="chatbot-action-btn"
-                onClick={handleResetChat}
-                title="Restart conversation"
-                aria-label="Restart conversation"
-              >
-                <RotateCcw size={15} />
-              </button>
-              <button
-                type="button"
-                className="chatbot-action-btn"
-                onClick={onToggle}
-                title="Close chatbot"
-                aria-label="Close chatbot"
-              >
-                <X size={17} />
-              </button>
+            <div>
+              <h3>CarbonTrack AI Coach</h3>
+              <span className="chatbot-status">
+                {isAiConfigured ? "Gemini Live Telemetry Engine" : "Telemetry Diagnostics Mode"}
+              </span>
             </div>
           </div>
 
-          {/* Messages Body */}
-          <div className="chatbot-messages-body">
-            {messages.map((m) => (
+          <div className="chatbot-header-actions" style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+            <button
+              type="button"
+              className="chatbot-clear-btn"
+              onClick={() => {
+                handleClearChat();
+                if (onClearContext) onClearContext();
+              }}
+              title="New conversation"
+              aria-label="New conversation"
+              style={{ display: "inline-flex", alignItems: "center", gap: "4px", fontSize: "0.78rem" }}
+            >
+              <RefreshCw size={14} />
+              <span>New</span>
+            </button>
+            <button
+              type="button"
+              className="chatbot-close-btn"
+              onClick={handleClose}
+              aria-label="Close AI Assistant"
+            >
+              <X size={20} />
+            </button>
+          </div>
+        </div>
+
+        <div className="chatbot-messages">
+          {messages.map((msg, i) => (
+            <div
+              key={i}
+              className={`chat-bubble-row ${msg.role === "user" ? "user" : "assistant"}`}
+            >
+              {msg.role === "assistant" && (
+                <div className="chat-avatar-small">
+                  {msg.isError ? <AlertTriangle size={14} /> : <Sparkles size={14} />}
+                </div>
+              )}
+
               <div
-                key={m.id}
-                className={`chat-bubble-row ${m.role === "user" ? "user-row" : "assistant-row"}`}
+                className={`chat-bubble ${msg.role === "user" ? "user" : "assistant"} ${
+                  msg.isError ? "error" : ""
+                }`}
               >
-                {m.role === "assistant" && (
-                  <div className="chat-avatar-icon">
-                    <Sparkles size={14} />
-                  </div>
+                <div className="chat-text-content">
+                  {msg.content.split("\n").map((line, lineIdx) => {
+                    const formattedLine = line
+                      .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
+                      .replace(/\*(.*?)\*/g, "<em>$1</em>");
+                    return (
+                      <p
+                        key={lineIdx}
+                        style={{ margin: line.trim() === "" ? "6px 0" : "2px 0" }}
+                        dangerouslySetInnerHTML={{ __html: formattedLine }}
+                      />
+                    );
+                  })}
+                </div>
+
+                {msg.isError && lastFailedPrompt && i === messages.length - 1 && (
+                  <button
+                    type="button"
+                    className="btn-outline"
+                    onClick={handleRetry}
+                    style={{
+                      marginTop: "8px",
+                      padding: "4px 10px",
+                      fontSize: "0.78rem",
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: "5px",
+                    }}
+                  >
+                    <RotateCcw size={13} />
+                    Retry Request
+                  </button>
                 )}
 
-                <div className={`chat-bubble ${m.role === "user" ? "user-bubble" : "assistant-bubble"}`}>
-                  <div className="chat-bubble-content">
-                    {renderFormattedContent(m.content)}
-                  </div>
-                  <div className="chat-bubble-meta">
-                    {m.aiModel && <span className="ai-model-tag">{m.aiModel}</span>}
-                    <span className="chat-time-tag">{m.timestamp}</span>
-                  </div>
-                </div>
+                {msg.role === "assistant" && msg.aiModel && (
+                  <div className="chat-model-badge">{msg.aiModel}</div>
+                )}
               </div>
-            ))}
+            </div>
+          ))}
 
-            {/* Typing / Analyzing Indicator */}
-            {loading && (
-              <div className="chat-bubble-row assistant-row">
-                <div className="chat-avatar-icon">
-                  <Sparkles size={14} className="animate-spin" />
-                </div>
-                <div className="chat-bubble assistant-bubble typing-bubble">
-                  <div className="typing-dots">
-                    <span className="dot" />
-                    <span className="dot" />
-                    <span className="dot" />
-                  </div>
-                  <span className="typing-label">Analyzing telemetry & formulating response...</span>
-                </div>
+          {loading && (
+            <div className="chat-bubble-row assistant">
+              <div className="chat-avatar-small">
+                <Sparkles size={14} className="spin-slow" />
               </div>
-            )}
-
-            <div ref={messagesEndRef} />
-          </div>
-
-          {/* Starter Quick Chips (when only initial greeting is present) */}
-          {messages.length <= 2 && !loading && (
-            <div className="chatbot-quick-chips">
-              <span className="chips-label">Suggested Inquiries:</span>
-              <div className="chips-scroll">
-                {STARTER_PROMPTS.map((prompt, idx) => (
-                  <button
-                    key={idx}
-                    type="button"
-                    className="chip-btn"
-                    onClick={() => handleSend(prompt)}
-                  >
-                    <span>{prompt}</span>
-                  </button>
-                ))}
+              <div className="chat-bubble assistant typing">
+                <span className="dot" />
+                <span className="dot" />
+                <span className="dot" />
               </div>
             </div>
           )}
 
-          {/* Footer Input Area */}
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleSend();
-            }}
-            className="chatbot-footer-form"
-          >
-            <div className="chatbot-input-wrap">
-              <input
-                ref={inputRef}
-                type="text"
-                placeholder="Ask CarbonTrack AI anything..."
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                disabled={loading}
-                className="chatbot-input"
-              />
-              <button
-                type="submit"
-                disabled={!input.trim() || loading}
-                className="chatbot-send-btn"
-                aria-label="Send message"
-              >
-                <Send size={15} />
-              </button>
-            </div>
-            <div className="chatbot-footer-sub">
-              <span>Personalized with your live activity telemetry.</span>
-            </div>
-          </form>
+          <div ref={messagesEndRef} />
         </div>
-      )}
-    </>
+
+        {messages.length <= 2 && !loading && (
+          <div className="chatbot-suggestions">
+            {STARTER_SUGGESTIONS.map((s, idx) => (
+              <button
+                key={idx}
+                type="button"
+                className="suggestion-chip"
+                onClick={() => handleSendMessage(s)}
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="chatbot-input-bar" style={{ alignItems: "flex-end" }}>
+          <textarea
+            rows={2}
+            placeholder="Ask about your emissions, goals, or sustainability tips (Shift+Enter for new line)..."
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+            className="chatbot-input"
+            style={{
+              resize: "none",
+              minHeight: "42px",
+              maxHeight: "110px",
+              lineHeight: 1.4,
+              paddingTop: "10px",
+            }}
+          />
+          <button
+            type="button"
+            className="chatbot-send-btn"
+            onClick={() => handleSendMessage()}
+            disabled={!input.trim() || loading}
+            aria-label="Send message"
+          >
+            <Send size={18} />
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

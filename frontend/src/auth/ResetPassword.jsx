@@ -3,7 +3,11 @@ import { Leaf, Lock, KeyRound, Eye, EyeOff, CheckCircle2, AlertCircle, ArrowLeft
 import { apiRequest } from "../api";
 
 export default function ResetPassword({ initialToken = "", onBackToLogin }) {
-  const [token, setToken] = useState(initialToken);
+  const [token, setToken] = useState(() => {
+    if (initialToken) return initialToken;
+    const params = new URLSearchParams(window.location.search);
+    return params.get("token") || "";
+  });
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
@@ -12,15 +16,6 @@ export default function ResetPassword({ initialToken = "", onBackToLogin }) {
   const [tokenValid, setTokenValid] = useState(null);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
-
-  useEffect(() => {
-    // Check if token was passed in query parameter
-    const params = new URLSearchParams(window.location.search);
-    const queryToken = params.get("token");
-    if (queryToken) {
-      setToken(queryToken);
-    }
-  }, []);
 
   useEffect(() => {
     if (!token || token.length < 10) return;

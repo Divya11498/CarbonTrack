@@ -536,7 +536,7 @@ public class AiRecommendationService {
             Map<Short, BigDecimal> activityTotals,
             List<Goal> activeGoals) throws Exception {
 
-        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=" + geminiApiKey;
+        String geminiEndpoint = "https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=" + geminiApiKey;
 
         StringBuilder telemetryPrompt = new StringBuilder();
         telemetryPrompt.append("You are an expert environmental sustainability AI for the CarbonTrack platform.\n");
@@ -571,7 +571,7 @@ public class AiRecommendationService {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(geminiEndpoint))
                 .header("Content-Type", "application/json")
-                .timeout(Duration.ofSeconds(10))
+                .timeout(Duration.ofSeconds(25))
                 .POST(HttpRequest.BodyPublishers.ofString(requestBody))
                 .build();
 
@@ -612,7 +612,7 @@ public class AiRecommendationService {
             rec.setTimeframe(item.path("timeframe").asText("This week"));
             rec.setPriority(priority++);
             rec.setIsAiGenerated(true);
-            rec.setAiModel("Gemini 1.5 Flash");
+            rec.setAiModel("Gemini Flash Latest");
             result.add(rec);
         }
 

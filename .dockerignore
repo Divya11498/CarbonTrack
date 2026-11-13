@@ -1,0 +1,8 @@
+.git
+.env
+target/
+frontend/
+node_modules/
+*.log
+e_db
+tatus
