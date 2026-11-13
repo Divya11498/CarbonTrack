@@ -127,6 +127,43 @@ public class EmailService {
         return dispatch(inviteUser, "ORG_INVITATION", "invitation-" + token, subject, html, false);
     }
 
+    public Map<String, Object> sendPersonalInvitation(
+            String recipientEmail,
+            User inviter,
+            String token,
+            String personalMessage) {
+
+        String inviterName = inviter != null && inviter.getDisplayName() != null ? inviter.getDisplayName() : "A friend";
+        String subject = inviterName + " invited you to join CarbonTrack!";
+        String inviteLink = frontendUrl + "?ref=" + token;
+
+        String customMsgBlock = "";
+        if (personalMessage != null && !personalMessage.isBlank()) {
+            customMsgBlock = "<blockquote style=\"border-left: 3px solid #8D9B72; margin: 12px 0; padding: 10px 14px; background: #f8fafc; font-style: italic; color: #334155; border-radius: 4px;\">\""
+                    + escapeHtml(personalMessage.trim()) + "\"</blockquote>";
+        }
+
+        String body = "<p>Hi there,</p>"
+                + "<p><strong>" + escapeHtml(inviterName) + "</strong> is tracking their daily carbon footprint and reducing emissions on <strong>CarbonTrack</strong>, and invited you to join them!</p>"
+                + customMsgBlock
+                + "<p>With CarbonTrack, you can:</p>"
+                + "<ul style=\"padding-left:20px;line-height:1.7;\">"
+                + "<li>Log transport, electricity, food, and shopping footprint in seconds.</li>"
+                + "<li>Receive tailored AI-driven suggestions for eco-friendly lifestyle swaps.</li>"
+                + "<li>Compete on friendly community leaderboards and unlock milestone badges.</li>"
+                + "</ul>"
+                + "<p style=\"font-size: 13px; color: #5c5549;\">Click below to start your personal sustainability journey on CarbonTrack.</p>"
+                + "<p style=\"font-size: 12px; color: #888; word-break: break-all;\">Link: " + inviteLink + "</p>";
+
+        String html = wrapLayout("Join CarbonTrack", body, "Join CarbonTrack Today", inviteLink);
+
+        User inviteUser = new User();
+        inviteUser.setEmail(recipientEmail);
+        inviteUser.setDisplayName("Friend");
+
+        return dispatch(inviteUser, "PERSONAL_INVITATION", "personal-invitation-" + token, subject, html, false);
+    }
+
     public String renderWelcomeEmail(User user) {
         String name = safeName(user);
         String body = "<p>Hi <strong>" + escapeHtml(name) + "</strong>,</p>"

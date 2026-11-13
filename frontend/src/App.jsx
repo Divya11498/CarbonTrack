@@ -442,6 +442,7 @@ export default function App() {
                 summaryData={summaryData}
                 onNavigate={setActivePage}
                 token={token}
+                userName={userName}
               />
             )}
 
@@ -482,7 +483,7 @@ export default function App() {
             )}
 
             {activePage === "Leaderboard" && (
-              <Leaderboard token={token} onNavigate={setActivePage} />
+              <Leaderboard token={token} onNavigate={setActivePage} userName={userName} />
             )}
 
             {activePage === "Achievements" && (

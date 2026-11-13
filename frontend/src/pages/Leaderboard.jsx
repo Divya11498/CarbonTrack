@@ -6,20 +6,29 @@ import {
   Search,
   PlusCircle,
   TrendingUp,
+  UserPlus,
+  Sparkles,
 } from "lucide-react";
 import { apiRequest } from "../api";
 import UserAvatar from "../components/UserAvatar";
+import PersonalInviteModal from "../components/PersonalInviteModal";
 
-export default function Leaderboard({ token, onNavigate }) {
+export default function Leaderboard({ token, onNavigate, userName }) {
   const [period, setPeriod] = useState("month");
   const [leaderboard, setLeaderboard] = useState([]);
   const [currentUserRank, setCurrentUserRank] = useState(-1);
+  const [currentUserEmissions, setCurrentUserEmissions] = useState(0);
+  const [currentUserScore, setCurrentUserScore] = useState(0);
+  const [platformAvgEmissions, setPlatformAvgEmissions] = useState(0);
+  const [gapToNextRank, setGapToNextRank] = useState(0);
+  const [nextRankName, setNextRankName] = useState(null);
   const [percentile, setPercentile] = useState(100);
   const [totalParticipants, setTotalParticipants] = useState(0);
   const [habitTips, setHabitTips] = useState([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [inviteModalOpen, setInviteModalOpen] = useState(false);
 
   useEffect(() => {
     async function loadLeaderboard() {
@@ -34,6 +43,11 @@ export default function Leaderboard({ token, onNavigate }) {
         if (res) {
           setLeaderboard(Array.isArray(res.leaderboard) ? res.leaderboard : []);
           setCurrentUserRank(res.currentUserRank ?? -1);
+          setCurrentUserEmissions(Number(res.currentUserEmissions ?? 0));
+          setCurrentUserScore(res.currentUserScore ?? 0);
+          setPlatformAvgEmissions(Number(res.platformAverageEmissions ?? 0));
+          setGapToNextRank(Number(res.gapToNextRank ?? 0));
+          setNextRankName(res.nextRankParticipantName || null);
           setPercentile(res.percentile ?? 100);
           setTotalParticipants(res.totalParticipants ?? 0);
           setHabitTips(Array.isArray(res.habitTips) ? res.habitTips : []);
@@ -88,70 +102,186 @@ export default function Leaderboard({ token, onNavigate }) {
         </div>
       </div>
 
-      {/* User Rank & Percentile Banner */}
+      {/* User Rank & Benchmarking Dashboard Card */}
       <div
         className="card-panel"
         style={{
-          padding: "18px 22px",
+          padding: "20px 24px",
           marginBottom: "20px",
-          display: "flex",
-          justifyContent: "space-between",
-          alignItems: "center",
-          flexWrap: "wrap",
-          gap: "16px",
           borderRadius: "14px",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
-          <div
-            style={{
-              width: 48,
-              height: 48,
-              borderRadius: "12px",
-              background: "var(--primary-gradient)",
-              color: "#fff",
-              display: "flex",
-              alignItems: "center",
-              justifyContent: "center",
-              boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
-            }}
-          >
-            <Trophy size={24} />
-          </div>
-          <div>
-            <div style={{ fontSize: "0.82rem", color: "var(--text-muted)" }}>Your Current Standings</div>
-            <h3 style={{ margin: "2px 0 0", fontSize: "1.1rem" }}>
-              {currentUserRank > 0 ? `Rank #${currentUserRank}` : "Unranked"} of {totalParticipants} participants
-            </h3>
-          </div>
-        </div>
-
-        <div style={{ display: "flex", gap: "20px", alignItems: "center", flexWrap: "wrap" }}>
-          <div style={{ textAlign: "right" }}>
-            <div style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>Community Benchmark</div>
-            <div style={{ fontWeight: 700, fontSize: "1.1rem", color: "var(--emerald)", display: "flex", alignItems: "center", gap: "4px", justifyContent: "flex-end" }}>
-              <TrendingUp size={16} /> Top {percentile}%
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "flex-start",
+            flexWrap: "wrap",
+            gap: "16px",
+            marginBottom: "16px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: "14px" }}>
+            <div
+              style={{
+                width: 48,
+                height: 48,
+                borderRadius: "12px",
+                background: "var(--primary-gradient)",
+                color: "#fff",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                boxShadow: "0 4px 12px rgba(16, 185, 129, 0.2)",
+                flexShrink: 0,
+              }}
+            >
+              <Trophy size={24} />
+            </div>
+            <div>
+              <div style={{ fontSize: "0.82rem", color: "var(--text-muted)", fontWeight: 600 }}>Your Active Standing</div>
+              <h3 style={{ margin: "2px 0 0", fontSize: "1.2rem", fontWeight: 700 }}>
+                {currentUserRank > 0 ? `Rank #${currentUserRank}` : "Unranked"} of {totalParticipants} participants
+              </h3>
             </div>
           </div>
-          {onNavigate && (
+
+          <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
             <button
               type="button"
-              className="btn-primary-gradient"
-              onClick={() => onNavigate("Log Activities")}
+              className="btn-outline"
+              onClick={() => setInviteModalOpen(true)}
               style={{
                 display: "inline-flex",
                 alignItems: "center",
                 gap: "6px",
-                padding: "8px 16px",
+                padding: "8px 14px",
                 fontSize: "0.85rem",
                 borderRadius: "8px",
+                cursor: "pointer",
               }}
             >
-              <PlusCircle size={15} />
-              Log Activity
+              <UserPlus size={15} />
+              <span>Invite Friends to Compete</span>
             </button>
-          )}
+
+            {onNavigate && (
+              <button
+                type="button"
+                className="btn-primary-gradient"
+                onClick={() => onNavigate("Log Activities")}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 16px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                  cursor: "pointer",
+                }}
+              >
+                <PlusCircle size={15} />
+                <span>Log Activity</span>
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Detailed Metrics Strip */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: "12px",
+            padding: "14px",
+            borderRadius: "10px",
+            background: "var(--bg-subtle)",
+            border: "1px solid var(--border)",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+              Your Emissions
+            </div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-main)", marginTop: "2px" }}>
+              {currentUserEmissions.toFixed(1)} <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>kg CO₂e</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+              Platform Average
+            </div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--text-main)", marginTop: "2px" }}>
+              {platformAvgEmissions.toFixed(1)} <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>kg CO₂e</span>
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+              Percentile Tier
+            </div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--emerald)", display: "flex", alignItems: "center", gap: "4px", marginTop: "2px" }}>
+              <TrendingUp size={16} /> Top {percentile}%
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>
+              Eco Score
+            </div>
+            <div style={{ fontSize: "1.05rem", fontWeight: 700, color: "var(--primary)", marginTop: "2px" }}>
+              {currentUserScore} <span style={{ fontSize: "0.78rem", fontWeight: 500 }}>/ 100</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Next Rank Motivation Pill */}
+        {currentUserRank > 1 && gapToNextRank > 0 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              background: "rgba(141, 155, 114, 0.09)",
+              border: "1px solid rgba(141, 155, 114, 0.25)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "0.82rem",
+              color: "var(--text-main)",
+            }}
+          >
+            <Sparkles size={16} style={{ color: "var(--primary)", flexShrink: 0 }} />
+            <span>
+              <strong>Pace to Rank #{currentUserRank - 1}:</strong> Save only{" "}
+              <strong style={{ color: "var(--primary)" }}>{gapToNextRank.toFixed(1)} kg CO₂e</strong> to overtake #{currentUserRank - 1}{" "}
+              {nextRankName ? `(${nextRankName})` : ""}!
+            </span>
+          </div>
+        )}
+
+        {currentUserRank === 1 && (
+          <div
+            style={{
+              marginTop: "12px",
+              padding: "10px 14px",
+              borderRadius: "8px",
+              background: "rgba(245, 158, 11, 0.1)",
+              border: "1px solid rgba(245, 158, 11, 0.3)",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              fontSize: "0.82rem",
+              color: "var(--text-main)",
+            }}
+          >
+            <Award size={16} style={{ color: "var(--amber)", flexShrink: 0 }} />
+            <span>
+              🎉 <strong>Phenomenal!</strong> You currently hold <strong>Rank #1</strong> across the entire community leaderboard!
+            </span>
+          </div>
+        )}
       </div>
 
       {error && <div className="alert-error" style={{ marginBottom: "16px" }}>{error}</div>}
@@ -427,6 +557,13 @@ export default function Leaderboard({ token, onNavigate }) {
           </div>
         </div>
       </div>
+
+      <PersonalInviteModal
+        isOpen={inviteModalOpen}
+        onClose={() => setInviteModalOpen(false)}
+        token={token}
+        userName={userName}
+      />
     </div>
   );
 }

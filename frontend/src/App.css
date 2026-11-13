@@ -2761,6 +2761,18 @@
   border-color: var(--border-focus);
 }
 
+.header-ai-btn {
+  color: var(--primary);
+  background: var(--bg-card);
+}
+
+.header-ai-btn:hover {
+  background: rgba(141, 155, 114, 0.14);
+  color: var(--primary);
+  border-color: var(--primary);
+  transform: translateY(-1px);
+}
+
 .notif-badge-count {
   position: absolute;
   top: -2px;

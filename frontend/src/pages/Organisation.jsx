@@ -9,24 +9,17 @@ import {
   Award,
   Plus,
   UserPlus,
-  Settings,
   Trash2,
-  ExternalLink,
-  Mail,
-  ShieldAlert,
   ShieldCheck,
   CheckCircle2,
-  Clock,
   Copy,
   Check,
   Globe,
   X,
   LayoutGrid,
   Table as TableIcon,
-  ChevronLeft,
-  ChevronRight,
-  PieChart as PieChartIcon,
-  BarChart3,
+  ChevronDown,
+  Briefcase,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -44,7 +37,7 @@ import {
 import UserAvatar from "../components/UserAvatar";
 import { apiRequest } from "../api";
 
-const ORG_CHART_COLORS = ["#8D9B72", "#5C8CA6", "#D99B4B", "#8774A3", "#789968"];
+const ORG_CHART_COLORS = ["#8D9B72", "#5C8CA6", "#D99B4B", "#8774A3", "#789968", "#64748B"];
 
 export default function Organisation({ token }) {
   const [orgData, setOrgData] = useState(null);
@@ -52,11 +45,12 @@ export default function Organisation({ token }) {
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null); // { type: 'success' | 'error', message: string }
 
-  // Tabs & Views
-  const [activeTab, setActiveTab] = useState("members"); // 'members' | 'departments' | 'invitations'
+  // Tabs: 'overview' | 'members' | 'departments' | 'invitations' | 'analytics' | 'settings'
+  const [activeTab, setActiveTab] = useState("overview");
   const [viewMode, setViewMode] = useState("table"); // 'table' | 'cards'
+  const [workspaceDropdownOpen, setWorkspaceDropdownOpen] = useState(false);
 
-  // Search, Filter & Pagination
+  // Search, Filter & Pagination for Members
   const [search, setSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState("ALL");
   const [deptFilter, setDeptFilter] = useState("ALL");
@@ -66,8 +60,10 @@ export default function Organisation({ token }) {
 
   // Modals state
   const [inviteModalOpen, setInviteModalOpen] = useState(false);
-  const [editOrgModalOpen, setEditOrgModalOpen] = useState(false);
   const [createOrgModalOpen, setCreateOrgModalOpen] = useState(false);
+  const [addDeptModalOpen, setAddDeptModalOpen] = useState(false);
+  const [changeDeptModalOpen, setChangeDeptModalOpen] = useState(false);
+  const [targetMemberForDept, setTargetMemberForDept] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [memberToRemove, setMemberToRemove] = useState(null);
   const [copiedToken, setCopiedToken] = useState(null);
@@ -78,7 +74,12 @@ export default function Organisation({ token }) {
   const [inviteDept, setInviteDept] = useState("Engineering");
   const [inviteLoading, setInviteLoading] = useState(false);
 
-  // Form states - Edit Org
+  // Form states - Add Department
+  const [newDeptName, setNewDeptName] = useState("");
+  const [newDeptMemberId, setNewDeptMemberId] = useState("");
+  const [deptLoading, setDeptLoading] = useState(false);
+
+  // Form states - Settings / Edit Org
   const [editName, setEditName] = useState("");
   const [editType, setEditType] = useState("COMPANY");
   const [editDescription, setEditDescription] = useState("");
@@ -96,7 +97,6 @@ export default function Organisation({ token }) {
   const [createLogoUrl, setCreateLogoUrl] = useState("");
   const [createDept, setCreateDept] = useState("Management");
   const [createLoading, setCreateLoading] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
 
   // Auto-dismiss toast
   useEffect(() => {
@@ -110,11 +110,12 @@ export default function Organisation({ token }) {
     setToast({ message, type });
   };
 
-  const loadOrg = useCallback(async () => {
+  const loadOrg = useCallback(async (targetOrgId = null) => {
     setLoading(true);
     setError("");
     try {
-      const res = await apiRequest("/api/organizations/my", { token });
+      const url = targetOrgId ? `/api/organizations/my?orgId=${targetOrgId}` : "/api/organizations/my";
+      const res = await apiRequest(url, { token });
       setOrgData(res);
       if (res && res.hasOrganization) {
         setEditName(res.name || "");
@@ -164,6 +165,7 @@ export default function Organisation({ token }) {
   // Extract distinct departments for filter dropdown
   const allDepartments = useMemo(() => {
     const set = new Set();
+    (orgData?.departments || []).forEach((d) => set.add(d.name));
     (orgData?.members || []).forEach((m) => {
       if (m.department) set.add(m.department);
     });
@@ -179,7 +181,7 @@ export default function Organisation({ token }) {
 
   // --- ACTIONS ---
 
-  // Invite Member
+  // Invite Member (Organization-specific)
   const handleInviteSubmit = async (e) => {
     e.preventDefault();
     if (!orgData?.organizationId) return;
@@ -196,10 +198,10 @@ export default function Organisation({ token }) {
         },
       });
 
-      showToast(res.message || "Member invited successfully!");
+      showToast(res.message || "Team member invited successfully!");
       setInviteModalOpen(false);
       setInviteEmail("");
-      loadOrg();
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to invite member", "error");
     } finally {
@@ -219,7 +221,7 @@ export default function Organisation({ token }) {
 
       showToast(`${memberToRemove.name} was removed from the organization.`);
       setMemberToRemove(null);
-      loadOrg();
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to remove member", "error");
     }
@@ -237,13 +239,59 @@ export default function Organisation({ token }) {
       });
 
       showToast("Member role updated successfully.");
-      loadOrg();
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to update role", "error");
     }
   };
 
-  // Edit Organization
+  // Update Member Department
+  const handleUpdateDept = async (targetUserId, newDept) => {
+    if (!orgData?.organizationId) return;
+
+    try {
+      await apiRequest(`/api/organizations/${orgData.organizationId}/members/${targetUserId}/department`, {
+        method: "PUT",
+        token,
+        body: { department: newDept },
+      });
+
+      showToast("Member department updated successfully.");
+      setChangeDeptModalOpen(false);
+      setTargetMemberForDept(null);
+      loadOrg(orgData.organizationId);
+    } catch (err) {
+      showToast(err.message || "Failed to update department", "error");
+    }
+  };
+
+  // Add Department / Assign member
+  const handleAddDepartmentSubmit = async (e) => {
+    e.preventDefault();
+    if (!orgData?.organizationId || !newDeptName.trim()) return;
+
+    setDeptLoading(true);
+    try {
+      if (newDeptMemberId) {
+        await apiRequest(`/api/organizations/${orgData.organizationId}/members/${newDeptMemberId}/department`, {
+          method: "PUT",
+          token,
+          body: { department: newDeptName.trim() },
+        });
+      }
+      showToast(`Department "${newDeptName.trim()}" configured successfully!`);
+      setAddDeptModalOpen(false);
+      setNewDeptName("");
+      setNewDeptMemberId("");
+      loadOrg(orgData.organizationId);
+    } catch (err) {
+      showToast(err.message || "Failed to create department", "error");
+    } finally {
+      setDeptLoading(false);
+    }
+  };
+
+  // Edit Organization Settings
   const handleEditOrgSubmit = async (e) => {
     e.preventDefault();
     if (!orgData?.organizationId) return;
@@ -264,8 +312,7 @@ export default function Organisation({ token }) {
       });
 
       showToast("Organization details updated successfully!");
-      setEditOrgModalOpen(false);
-      loadOrg();
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to update organization", "error");
     } finally {
@@ -273,13 +320,32 @@ export default function Organisation({ token }) {
     }
   };
 
-  // Create Organization
-  const handleCreateOrgSubmit = async (e) => {
-    e.preventDefault();
-    setCreateLoading(true);
+  // Delete Organization
+  const handleDeleteOrg = async () => {
+    if (!orgData?.organizationId) return;
 
     try {
-      await apiRequest("/api/organizations", {
+      await apiRequest(`/api/organizations/${orgData.organizationId}`, {
+        method: "DELETE",
+        token,
+      });
+
+      showToast("Organization deleted successfully.");
+      setDeleteConfirmOpen(false);
+      loadOrg();
+    } catch (err) {
+      showToast(err.message || "Failed to delete organization", "error");
+    }
+  };
+
+  // Create Organization (Data Flow: User submits -> POST /api/organizations -> Spring Boot -> DB -> State update)
+  const handleCreateOrgSubmit = async (e) => {
+    e.preventDefault();
+    if (!createName.trim()) return;
+
+    setCreateLoading(true);
+    try {
+      const res = await apiRequest("/api/organizations", {
         method: "POST",
         token,
         body: {
@@ -293,14 +359,11 @@ export default function Organisation({ token }) {
         },
       });
 
-      showToast("Organization workspace created successfully!");
+      showToast(`Welcome to ${res.name || "your new organization"}!`);
       setCreateOrgModalOpen(false);
       setCreateName("");
       setCreateDescription("");
-      setCreateWebsite("");
-      setCreateContactEmail("");
-      setCreateLogoUrl("");
-      loadOrg();
+      loadOrg(res.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to create organization", "error");
     } finally {
@@ -308,343 +371,280 @@ export default function Organisation({ token }) {
     }
   };
 
-  // Resend Invitation
-  const handleResendInvitation = async (invitationId) => {
-    if (!orgData?.organizationId) return;
+  // Copy invitation link
+  const handleCopyLink = (tokenVal) => {
+    const link = `${window.location.origin}/accept-invite?token=${tokenVal}`;
+    navigator.clipboard.writeText(link).then(() => {
+      setCopiedToken(tokenVal);
+      showToast("Invitation link copied to clipboard!");
+      setTimeout(() => setCopiedToken(null), 2500);
+    });
+  };
 
+  // Resend invitation
+  const handleResendInvite = async (invitationId) => {
+    if (!orgData?.organizationId) return;
     try {
-      const res = await apiRequest(`/api/organizations/${orgData.organizationId}/invitations/${invitationId}/resend`, {
+      await apiRequest(`/api/organizations/${orgData.organizationId}/invitations/${invitationId}/resend`, {
         method: "POST",
         token,
       });
-
-      showToast(res.message || "Invitation resent successfully!");
-      loadOrg();
+      showToast("Invitation resent successfully!");
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to resend invitation", "error");
     }
   };
 
-  // Delete Organization
-  const handleDeleteOrganization = async () => {
+  // Revoke invitation
+  const handleRevokeInvite = async (invitationId) => {
     if (!orgData?.organizationId) return;
-
-    try {
-      await apiRequest(`/api/organizations/${orgData.organizationId}`, {
-        method: "DELETE",
-        token,
-      });
-
-      showToast("Organization was deleted successfully.");
-      setDeleteConfirmOpen(false);
-      loadOrg();
-    } catch (err) {
-      showToast(err.message || "Failed to delete organization", "error");
-    }
-  };
-
-  // Revoke Invitation
-  const handleRevokeInvitation = async (invitationId) => {
-    if (!orgData?.organizationId) return;
-
     try {
       await apiRequest(`/api/organizations/${orgData.organizationId}/invitations/${invitationId}`, {
         method: "DELETE",
         token,
       });
-
       showToast("Invitation revoked.");
-      loadOrg();
+      loadOrg(orgData.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to revoke invitation", "error");
     }
   };
 
-  const totalEmissions = Number(orgData?.totalEmissionsKg || 0);
-  const avgPerMember = Number(orgData?.averagePerMemberKg || 0);
-  const monthlyTarget = Number(orgData?.organizationMonthlyTarget || 1200);
-
-  const renderCreateOrgModal = () => {
-    if (!createOrgModalOpen) return null;
-
+  if (loading && !orgData) {
     return (
-      <div className="modal-backdrop" onClick={() => setCreateOrgModalOpen(false)}>
-        <div className="modal-card" style={{ maxWidth: "540px" }} onClick={(e) => e.stopPropagation()}>
-          <div className="modal-header">
-            <h3>Create Organization Workspace</h3>
-            <button
-              type="button"
-              className="modal-close-btn"
-              onClick={() => setCreateOrgModalOpen(false)}
-              aria-label="Close modal"
-            >
-              <X size={18} />
-            </button>
-          </div>
-          <form onSubmit={handleCreateOrgSubmit} style={{ padding: "20px" }}>
-            <div className="form-group" style={{ marginBottom: "14px" }}>
-              <label>Organization Name *</label>
-              <input
-                type="text"
-                value={createName}
-                onChange={(e) => setCreateName(e.target.value)}
-                placeholder="e.g. Acme Sustainability Corp"
-                required
-              />
-            </div>
-            <div className="form-group" style={{ marginBottom: "14px" }}>
-              <label>Organization Type</label>
-              <select value={createType} onChange={(e) => setCreateType(e.target.value)}>
-                <option value="COMPANY">Company / Enterprise</option>
-                <option value="UNIVERSITY">University / Education</option>
-                <option value="NGO">Non-Profit / NGO</option>
-                <option value="GOVERNMENT">Government Agency</option>
-                <option value="HOUSEHOLD">Household / Family</option>
-                <option value="OTHER">Community Coalition</option>
-              </select>
-            </div>
-            <div className="form-group" style={{ marginBottom: "14px" }}>
-              <label>Description</label>
-              <textarea
-                rows="2"
-                value={createDescription}
-                onChange={(e) => setCreateDescription(e.target.value)}
-                placeholder="Brief description of your organization's mission"
-              />
-            </div>
-            <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
-              <div className="form-group">
-                <label>Website URL</label>
-                <input
-                  type="url"
-                  value={createWebsite}
-                  onChange={(e) => setCreateWebsite(e.target.value)}
-                  placeholder="https://example.com"
-                />
-              </div>
-              <div className="form-group">
-                <label>Contact Email</label>
-                <input
-                  type="email"
-                  value={createContactEmail}
-                  onChange={(e) => setCreateContactEmail(e.target.value)}
-                  placeholder="contact@example.com"
-                />
-              </div>
-            </div>
-            <div className="form-row-two-col" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
-              <div className="form-group">
-                <label>Logo URL</label>
-                <input
-                  type="url"
-                  value={createLogoUrl}
-                  onChange={(e) => setCreateLogoUrl(e.target.value)}
-                  placeholder="https://example.com/logo.png"
-                />
-              </div>
-              <div className="form-group">
-                <label>Your Department</label>
-                <input
-                  type="text"
-                  value={createDept}
-                  onChange={(e) => setCreateDept(e.target.value)}
-                  placeholder="e.g. Management, Engineering"
-                />
-              </div>
-            </div>
-            <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px", marginTop: "20px" }}>
-              <button type="button" className="btn-outline" onClick={() => setCreateOrgModalOpen(false)}>
-                Cancel
-              </button>
-              <button type="submit" className="btn-primary" disabled={createLoading}>
-                {createLoading ? "Creating..." : "Create Organization"}
-              </button>
-            </div>
-          </form>
-        </div>
-      </div>
-    );
-  };
-
-  // If user doesn't belong to any organization
-  if (!loading && orgData && orgData.hasOrganization === false) {
-    return (
-      <div className="page-content organisation-page">
-        <div className="panel" style={{ padding: "48px 24px", textAlign: "center", maxWidth: "600px", margin: "40px auto" }}>
-          <div className="icon-badge bg-green" style={{ width: "64px", height: "64px", margin: "0 auto 16px" }}>
-            <Building2 size={32} />
-          </div>
-          <h3 style={{ fontSize: "22px", fontWeight: "800", marginBottom: "8px" }}>
-            Join or Create an Organization
-          </h3>
-          <p style={{ color: "var(--text-muted)", fontSize: "14px", lineHeight: "1.6", marginBottom: "24px" }}>
-            Collaborate with your team, benchmark departmental emissions, and drive enterprise-wide sustainability goals together.
-          </p>
-
-          <button
-            type="button"
-            className="btn-primary"
-            onClick={() => setCreateOrgModalOpen(true)}
-            style={{ display: "inline-flex", alignItems: "center", gap: "8px", margin: "0 auto" }}
-          >
-            <Plus size={18} /> Create Organization Workspace
-          </button>
-        </div>
-
-        {/* Modal: Create Organization */}
-        {renderCreateOrgModal()}
+      <div className="panel" style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
+        <RefreshCw size={24} className="spin" style={{ marginBottom: "12px" }} />
+        <p>Loading organization workspace...</p>
       </div>
     );
   }
 
+  // If user has no organization yet, show onboarding
+  if (!orgData?.hasOrganization) {
+    return (
+      <div className="panel" style={{ padding: "48px 32px", textAlign: "center", maxWidth: "640px", margin: "40px auto", borderRadius: "16px" }}>
+        <div
+          style={{
+            width: "64px",
+            height: "64px",
+            borderRadius: "16px",
+            background: "rgba(141, 155, 114, 0.2)",
+            color: "var(--primary)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            margin: "0 auto 20px",
+          }}
+        >
+          <Building2 size={32} />
+        </div>
+
+        <h2 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 8px" }}>
+          Create an Organization Workspace
+        </h2>
+        <p style={{ color: "var(--text-muted)", fontSize: "0.92rem", lineHeight: 1.5, margin: "0 0 24px" }}>
+          Collaborate with your enterprise team, manage departmental carbon budgets, track employee footprint benchmarks, and invite colleagues to achieve collective climate goals.
+        </p>
+
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={() => setCreateOrgModalOpen(true)}
+          style={{ padding: "12px 24px", fontSize: "0.95rem", display: "inline-flex", alignItems: "center", gap: "8px" }}
+        >
+          <Plus size={18} />
+          <span>Create Organization</span>
+        </button>
+
+        {/* Modal: Create Organization */}
+        {createOrgModalOpen && (
+          <CreateOrgModal
+            createName={createName}
+            setCreateName={setCreateName}
+            createType={createType}
+            setCreateType={setCreateType}
+            createDescription={createDescription}
+            setCreateDescription={setCreateDescription}
+            createWebsite={createWebsite}
+            setCreateWebsite={setCreateWebsite}
+            createContactEmail={createContactEmail}
+            setCreateContactEmail={setCreateContactEmail}
+            createLogoUrl={createLogoUrl}
+            setCreateLogoUrl={setCreateLogoUrl}
+            createDept={createDept}
+            setCreateDept={setCreateDept}
+            createLoading={createLoading}
+            onSubmit={handleCreateOrgSubmit}
+            onClose={() => setCreateOrgModalOpen(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  const totalEmissions = Number(orgData?.totalEmissionsKg || 0);
+  const avgPerMember = Number(orgData?.averagePerMemberKg || 0);
+  const monthlyTarget = Number(orgData?.organizationMonthlyTarget || 500);
+  const workspaces = orgData?.workspaces || [];
+
   return (
-    <div className="page-content organisation-page">
-      {/* Toast Alert */}
+    <div className="organisation-page">
+      {/* Toast banner */}
       {toast && (
         <div
-          className={`org-toast-alert ${toast.type === "error" ? "toast-error" : "toast-success"}`}
           style={{
             position: "fixed",
             bottom: "24px",
             right: "24px",
-            zIndex: 1500,
+            zIndex: 3000,
             padding: "12px 18px",
-            borderRadius: "var(--radius-md)",
-            background: toast.type === "error" ? "#ef4444" : "#10b981",
+            borderRadius: "10px",
+            background: toast.type === "success" ? "#10b981" : "#ef4444",
             color: "#ffffff",
-            boxShadow: "var(--shadow-lg)",
+            boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+            fontSize: "0.88rem",
+            fontWeight: 600,
             display: "flex",
             alignItems: "center",
-            gap: "10px",
-            fontSize: "13.5px",
-            fontWeight: "500",
-            animation: "authFadeIn 0.2s ease-out",
+            gap: "8px",
           }}
         >
-          {toast.type === "error" ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+          {toast.type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
           <span>{toast.message}</span>
         </div>
       )}
 
-      {/* Top Heading & Action Buttons */}
-      <div className="page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "16px" }}>
-        <div>
-          <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "4px" }}>
-            <h2>Organization</h2>
-            <span
-              style={{
-                fontSize: "11px",
-                fontWeight: "700",
-                textTransform: "uppercase",
-                padding: "2px 8px",
-                borderRadius: "999px",
-                background: "rgba(16, 185, 129, 0.12)",
-                color: "var(--primary-emerald)",
-              }}
-            >
-              {orgData?.type || "ENTERPRISE"}
-            </span>
-          </div>
-          <p>
-            Manage team members, roles, and aggregate footprint.
-          </p>
-        </div>
-
-        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-          <button
-            type="button"
-            className="btn-outline"
-            onClick={loadOrg}
-            disabled={loading}
-            title="Refresh workspace data"
-            style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-          >
-            <RefreshCw size={15} className={loading ? "animate-spin" : ""} />
-            Refresh
-          </button>
-
-          {isAdminOrOwner && (
-            <>
-              <button
-                type="button"
-                className="btn-outline"
-                onClick={() => setEditOrgModalOpen(true)}
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <Settings size={15} />
-                Manage Org
-              </button>
-
-              <button
-                type="button"
-                className="btn-primary"
-                onClick={() => setInviteModalOpen(true)}
-                style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
-              >
-                <UserPlus size={16} />
-                Invite Member
-              </button>
-            </>
-          )}
-        </div>
-      </div>
-
+      {/* Error banner */}
       {error && (
-        <div className="auth-error-banner" role="alert">
-          <AlertCircle size={18} />
-          <span>{error}</span>
+        <div
+          style={{
+            padding: "12px 16px",
+            borderRadius: "10px",
+            background: "rgba(239, 68, 68, 0.12)",
+            color: "#ef4444",
+            border: "1px solid rgba(239, 68, 68, 0.25)",
+            marginBottom: "16px",
+            fontSize: "0.85rem",
+          }}
+        >
+          {error}
         </div>
       )}
 
-      {/* Organization Hero Profile Overview Banner */}
-      <div
-        className="panel"
-        style={{
-          padding: "24px",
-          marginBottom: "24px",
-          position: "relative",
-          background: "var(--bg-card)",
-          border: "1px solid var(--border)",
-        }}
-      >
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "20px" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "18px" }}>
+      {/* Top Workspace Header & Multi-Organization Switcher */}
+      <div className="panel" style={{ padding: "20px 24px", borderRadius: "14px", marginBottom: "20px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "16px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <div
-              className="icon-badge bg-green"
               style={{
-                width: "60px",
-                height: "60px",
-                fontSize: "24px",
-                fontWeight: "800",
-                color: "var(--primary-forest)",
-                background: "rgba(22, 101, 52, 0.12)",
-                borderRadius: "var(--radius-lg)",
-                overflow: "hidden",
+                width: "52px",
+                height: "52px",
+                borderRadius: "12px",
+                background: "rgba(141, 155, 114, 0.18)",
+                color: "var(--primary)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
                 flexShrink: 0,
+                fontSize: "1.2rem",
+                fontWeight: 800,
               }}
             >
-              {orgData?.logoUrl ? (
-                <img src={orgData.logoUrl} alt={orgData.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              ) : (
-                <Building2 size={30} />
-              )}
+              {orgData?.name?.slice(0, 2).toUpperCase() || "CT"}
             </div>
 
             <div>
-              <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                <h3 style={{ fontSize: "20px", fontWeight: "800", color: "var(--text-primary)" }}>
-                  {orgData?.name || "Corporate Sustainability Portal"}
-                </h3>
+              {/* Workspace Selector Dropdown */}
+              <div style={{ position: "relative", display: "inline-block" }}>
+                <button
+                  type="button"
+                  onClick={() => setWorkspaceDropdownOpen((prev) => !prev)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    padding: 0,
+                    margin: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  <h2 style={{ margin: 0, fontSize: "1.35rem", fontWeight: 800, color: "var(--text-main)" }}>
+                    {orgData?.name}
+                  </h2>
+                  {workspaces.length > 1 && <ChevronDown size={18} style={{ color: "var(--text-muted)" }} />}
+                </button>
+
+                {workspaceDropdownOpen && workspaces.length > 1 && (
+                  <div
+                    style={{
+                      position: "absolute",
+                      top: "100%",
+                      left: 0,
+                      marginTop: "8px",
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "12px",
+                      padding: "8px",
+                      minWidth: "220px",
+                      boxShadow: "0 10px 25px rgba(0,0,0,0.25)",
+                      zIndex: 100,
+                    }}
+                  >
+                    <div style={{ fontSize: "0.72rem", color: "var(--text-muted)", padding: "4px 8px", fontWeight: 700, textTransform: "uppercase" }}>
+                      Switch Organization Workspace
+                    </div>
+                    {workspaces.map((ws) => (
+                      <button
+                        key={ws.organizationId}
+                        type="button"
+                        onClick={() => {
+                          setWorkspaceDropdownOpen(false);
+                          loadOrg(ws.organizationId);
+                        }}
+                        style={{
+                          width: "100%",
+                          textAlign: "left",
+                          padding: "8px 10px",
+                          borderRadius: "6px",
+                          border: "none",
+                          background: ws.isCurrent ? "var(--bg-subtle)" : "transparent",
+                          fontWeight: ws.isCurrent ? 700 : 500,
+                          color: "var(--text-main)",
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "center",
+                          cursor: "pointer",
+                          fontSize: "0.85rem",
+                        }}
+                      >
+                        <span>{ws.name}</span>
+                        <span style={{ fontSize: "0.7rem", color: "var(--primary)", fontWeight: 700 }}>
+                          {ws.role}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div style={{ display: "flex", alignItems: "center", gap: "8px", marginTop: "4px", flexWrap: "wrap" }}>
+                <span style={{ fontSize: "0.76rem", padding: "2px 8px", borderRadius: "12px", background: "var(--bg-subtle)", color: "var(--text-muted)", fontWeight: 600 }}>
+                  {orgData?.type || "COMPANY"}
+                </span>
 
                 <span
                   style={{
+                    fontSize: "0.76rem",
+                    padding: "2px 8px",
+                    borderRadius: "12px",
+                    fontWeight: 700,
                     display: "inline-flex",
                     alignItems: "center",
                     gap: "4px",
-                    fontSize: "11px",
-                    fontWeight: "700",
-                    padding: "3px 8px",
-                    borderRadius: "6px",
                     background:
                       userRole === "OWNER"
                         ? "rgba(245, 158, 11, 0.15)"
@@ -661,489 +661,342 @@ export default function Organisation({ token }) {
                 >
                   <ShieldCheck size={13} /> {userRole}
                 </span>
-              </div>
 
-              <p style={{ color: "var(--text-muted)", fontSize: "14px", marginTop: "4px", maxWidth: "600px", lineHeight: "1.5" }}>
-                {orgData?.description || "Collaborative workforce driving carbon footprint reduction and green best practices."}
-              </p>
-
-              {/* Links & Contact */}
-              <div style={{ display: "flex", gap: "16px", marginTop: "10px", flexWrap: "wrap", fontSize: "12.5px" }}>
                 {orgData?.website && (
                   <a
                     href={orgData.website.startsWith("http") ? orgData.website : `https://${orgData.website}`}
                     target="_blank"
                     rel="noreferrer"
-                    style={{ color: "var(--primary-emerald)", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                    style={{ fontSize: "0.76rem", color: "var(--primary)", display: "inline-flex", alignItems: "center", gap: "4px" }}
                   >
-                    <Globe size={13} /> {orgData.website.replace(/^https?:\/\//, "")} <ExternalLink size={11} />
+                    <Globe size={12} /> {orgData.website.replace(/^https?:\/\//, "")}
                   </a>
-                )}
-                {orgData?.contactEmail && (
-                  <span style={{ color: "var(--text-muted)", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                    <Mail size={13} /> {orgData.contactEmail}
-                  </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Quick switcher / create new button */}
-          <button
-            type="button"
-            className="btn-outline"
-            onClick={() => setCreateOrgModalOpen(true)}
-            style={{ fontSize: "12px", padding: "6px 12px", display: "inline-flex", alignItems: "center", gap: "6px" }}
-          >
-            <Plus size={14} /> New Org
-          </button>
-        </div>
-      </div>
+          {/* Quick Actions */}
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            {isAdminOrOwner && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setInviteModalOpen(true)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  padding: "8px 14px",
+                  fontSize: "0.85rem",
+                  borderRadius: "8px",
+                }}
+              >
+                <UserPlus size={15} />
+                <span>Invite Colleague</span>
+              </button>
+            )}
 
-      {/* KPI Stats Grid */}
-      <div className="org-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "18px", marginBottom: "24px" }}>
-        <div className="panel org-kpi-card" style={{ padding: "20px" }}>
-          <div className="icon-badge bg-green" style={{ marginBottom: "12px" }}>
-            <Building2 size={20} />
-          </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Workforce Footprint</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {totalEmissions.toFixed(1)} kg
-          </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Avg {Number(orgData?.averageDailyCo2eKg || 0).toFixed(2)} kg/day
-          </span>
-        </div>
-
-        <div className="panel org-kpi-card" style={{ padding: "20px" }}>
-          <div className="icon-badge bg-emerald" style={{ marginBottom: "12px" }}>
-            <Users size={20} />
-          </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Active Team Members</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {orgData?.activeUsersCount ?? orgData?.totalMembers ?? filteredMembers.length} / {orgData?.totalMembers || filteredMembers.length}
-          </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            Avg {avgPerMember.toFixed(1)} kg / employee
-          </span>
-        </div>
-
-        <div className="panel org-kpi-card" style={{ padding: "20px" }}>
-          <div className="icon-badge bg-lime" style={{ marginBottom: "12px" }}>
-            <TrendingDown size={20} />
-          </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>CO₂e Saved vs Budget</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {Number(orgData?.totalCo2eSavedKg || 0).toFixed(1)} kg
-          </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: totalEmissions <= monthlyTarget ? "var(--emerald)" : "var(--red)" }}>
-            Budget: {monthlyTarget} kg ({totalEmissions <= monthlyTarget ? "Within budget" : "Over budget"})
-          </span>
-        </div>
-
-        <div className="panel org-kpi-card" style={{ padding: "20px" }}>
-          <div className="icon-badge bg-green" style={{ marginBottom: "12px" }}>
-            <Award size={20} />
-          </div>
-          <span className="kpi-label" style={{ fontSize: "12px", color: "var(--text-muted)", textTransform: "uppercase" }}>Goals Achieved</span>
-          <strong className="kpi-val" style={{ display: "block", fontSize: "24px", fontWeight: "800", color: "var(--text-main)", margin: "4px 0" }}>
-            {orgData?.goalsAchievedCount ?? 0}
-          </strong>
-          <span className="kpi-sub" style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-            {orgData?.pendingInvitationsCount || (orgData?.invitations || []).length} pending invites
-          </span>
-        </div>
-      </div>
-
-      {/* Overview Analytics Charts */}
-      <div
-        className="analytics-charts-grid"
-        style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(290px, 1fr))", gap: "18px", marginBottom: "24px" }}
-      >
-        <div className="panel" style={{ padding: "20px", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-            <PieChartIcon size={18} style={{ color: "var(--primary)" }} />
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Workforce Category Share</h3>
-          </div>
-          {Array.isArray(orgData?.categoryBreakdown) && orgData.categoryBreakdown.length > 0 ? (
-            <div style={{ width: "100%", height: "230px" }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={orgData.categoryBreakdown}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                  >
-                    {orgData.categoryBreakdown.map((entry, idx) => (
-                      <Cell key={entry.name || idx} fill={ORG_CHART_COLORS[idx % ORG_CHART_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Share"]} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "36px 0", textAlign: "center" }}>
-              No category emissions recorded yet across this organization.
-            </p>
-          )}
-        </div>
-
-        <div className="panel" style={{ padding: "20px", minWidth: 0 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "14px" }}>
-            <BarChart3 size={18} style={{ color: "var(--primary)" }} />
-            <h3 style={{ margin: 0, fontSize: "16px", fontWeight: "700" }}>Monthly Organization Trend</h3>
-          </div>
-          {Array.isArray(orgData?.monthlyTrends) && orgData.monthlyTrends.length > 0 ? (
-            <div style={{ width: "100%", height: "230px" }}>
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={orgData.monthlyTrends}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" />
-                  <XAxis dataKey="month" stroke="var(--text-muted)" fontSize={12} />
-                  <YAxis stroke="var(--text-muted)" fontSize={12} />
-                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Total"]} />
-                  <Bar dataKey="co2e" fill="var(--primary)" radius={[6, 6, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          ) : (
-            <p style={{ color: "var(--text-muted)", fontSize: "13px", padding: "36px 0", textAlign: "center" }}>
-              Monthly trend will populate once team activities are logged.
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Tabs Row */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: "1px solid var(--border)", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
-        <div style={{ display: "flex", gap: "8px" }}>
-          <button
-            type="button"
-            className={`filter-btn ${activeTab === "members" ? "active" : ""}`}
-            onClick={() => setActiveTab("members")}
-            style={{
-              padding: "10px 18px",
-              border: "none",
-              background: "transparent",
-              borderBottom: activeTab === "members" ? "3px solid var(--primary)" : "3px solid transparent",
-              color: activeTab === "members" ? "var(--text-main)" : "var(--text-muted)",
-              fontWeight: "700",
-              cursor: "pointer",
-              fontSize: "14px",
-              transition: "all 0.2s ease",
-            }}
-          >
-            Team Members ({orgData?.members?.length || 0})
-          </button>
-
-          <button
-            type="button"
-            className={`filter-btn ${activeTab === "departments" ? "active" : ""}`}
-            onClick={() => setActiveTab("departments")}
-            style={{
-              padding: "10px 18px",
-              border: "none",
-              background: "transparent",
-              borderBottom: activeTab === "departments" ? "3px solid var(--primary)" : "3px solid transparent",
-              color: activeTab === "departments" ? "var(--text-main)" : "var(--text-muted)",
-              fontWeight: "700",
-              cursor: "pointer",
-              fontSize: "14px",
-              transition: "all 0.2s ease",
-            }}
-          >
-            Departments ({orgData?.departments?.length || 0})
-          </button>
-
-          {isAdminOrOwner && (
             <button
               type="button"
-              className={`filter-btn ${activeTab === "invitations" ? "active" : ""}`}
-              onClick={() => setActiveTab("invitations")}
+              className="btn-outline"
+              onClick={() => setCreateOrgModalOpen(true)}
               style={{
-                padding: "10px 18px",
-                border: "none",
-                background: "transparent",
-                borderBottom: activeTab === "invitations" ? "3px solid var(--primary)" : "3px solid transparent",
-                color: activeTab === "invitations" ? "var(--text-main)" : "var(--text-muted)",
-                fontWeight: "700",
-                cursor: "pointer",
-                fontSize: "14px",
-                transition: "all 0.2s ease",
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                padding: "8px 14px",
+                fontSize: "0.85rem",
+                borderRadius: "8px",
               }}
             >
-              Pending Invites ({orgData?.invitations?.length || 0})
-            </button>
-          )}
-        </div>
-
-        {activeTab === "members" && (
-          <div style={{ display: "flex", gap: "6px" }}>
-            <button
-              type="button"
-              onClick={() => setViewMode("table")}
-              className={`btn-outline ${viewMode === "table" ? "active" : ""}`}
-              style={{ padding: "6px 10px", borderRadius: "6px" }}
-              title="Table View"
-            >
-              <TableIcon size={16} />
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("cards")}
-              className={`btn-outline ${viewMode === "cards" ? "active" : ""}`}
-              style={{ padding: "6px 10px", borderRadius: "6px" }}
-              title="Card Grid View"
-            >
-              <LayoutGrid size={16} />
+              <Plus size={15} />
+              <span>New Org</span>
             </button>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* ========================================================
-          TAB 1: MEMBERS MANAGEMENT
-         ======================================================== */}
-      {activeTab === "members" && (
-        <div className="panel" style={{ padding: "20px" }}>
-          {/* Search & Filters Toolbar */}
-          <div
+      {/* Tabs Navigation Bar (All 6 sections) */}
+      <div
+        style={{
+          display: "flex",
+          gap: "6px",
+          borderBottom: "1px solid var(--border)",
+          marginBottom: "20px",
+          overflowX: "auto",
+          paddingBottom: "2px",
+        }}
+      >
+        {[
+          { id: "overview", label: "Overview" },
+          { id: "members", label: `Members (${orgData?.members?.length || 0})` },
+          { id: "departments", label: `Departments (${orgData?.departments?.length || 0})` },
+          ...(isAdminOrOwner
+            ? [{ id: "invitations", label: `Invitations (${orgData?.invitations?.length || 0})` }]
+            : []),
+          { id: "analytics", label: "Organization Analytics" },
+          ...(isAdminOrOwner ? [{ id: "settings", label: "Settings" }] : []),
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            onClick={() => setActiveTab(tab.id)}
             style={{
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "14px",
-              marginBottom: "20px",
+              padding: "10px 16px",
+              border: "none",
+              background: "transparent",
+              borderBottom: activeTab === tab.id ? "3px solid var(--primary)" : "3px solid transparent",
+              color: activeTab === tab.id ? "var(--text-main)" : "var(--text-muted)",
+              fontWeight: 700,
+              cursor: "pointer",
+              fontSize: "0.86rem",
+              whiteSpace: "nowrap",
+              transition: "all 0.15s ease",
             }}
           >
-            {/* Search Bar */}
-            <div className="roster-search-box" style={{ maxWidth: "340px", flex: 1, position: "relative" }}>
-              <Search size={16} />
-              <input
-                type="text"
-                placeholder="Search member, email, department..."
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{ paddingRight: search ? "32px" : "12px" }}
-              />
-              {search && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
+            {tab.label}
+          </button>
+        ))}
+      </div>
+
+      {/* ==================================================================== */}
+      {/* SECTION 1: OVERVIEW                                                  */}
+      {/* ==================================================================== */}
+      {activeTab === "overview" && (
+        <div>
+          {/* KPI Statistics */}
+          <div className="org-kpi-grid" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(210px, 1fr))", gap: "16px", marginBottom: "20px" }}>
+            <div className="panel" style={{ padding: "18px", borderRadius: "12px" }}>
+              <div style={{ color: "var(--primary)", marginBottom: "8px" }}><Building2 size={20} /></div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Total Org Emissions</div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, margin: "2px 0" }}>{totalEmissions.toFixed(1)} kg</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Daily rate: {Number(orgData?.averageDailyCo2eKg || 0).toFixed(2)} kg/day</div>
+            </div>
+
+            <div className="panel" style={{ padding: "18px", borderRadius: "12px" }}>
+              <div style={{ color: "var(--primary)", marginBottom: "8px" }}><Users size={20} /></div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Active Members</div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, margin: "2px 0" }}>{orgData?.activeUsersCount || orgData?.totalMembers || 0} / {orgData?.totalMembers || 0}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Avg {avgPerMember.toFixed(1)} kg / employee</div>
+            </div>
+
+            <div className="panel" style={{ padding: "18px", borderRadius: "12px" }}>
+              <div style={{ color: "var(--primary)", marginBottom: "8px" }}><TrendingDown size={20} /></div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>CO₂e Saved vs Cap</div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, margin: "2px 0" }}>{Number(orgData?.totalCo2eSavedKg || 0).toFixed(1)} kg</div>
+              <div style={{ fontSize: "0.75rem", color: totalEmissions <= monthlyTarget ? "var(--emerald)" : "var(--red)" }}>
+                Monthly limit: {monthlyTarget} kg
+              </div>
+            </div>
+
+            <div className="panel" style={{ padding: "18px", borderRadius: "12px" }}>
+              <div style={{ color: "var(--primary)", marginBottom: "8px" }}><Award size={20} /></div>
+              <div style={{ fontSize: "0.74rem", color: "var(--text-muted)", textTransform: "uppercase", fontWeight: 700 }}>Goals Achieved</div>
+              <div style={{ fontSize: "1.4rem", fontWeight: 800, margin: "2px 0" }}>{orgData?.goalsAchievedCount || 0}</div>
+              <div style={{ fontSize: "0.75rem", color: "var(--text-muted)" }}>Across team initiatives</div>
+            </div>
+          </div>
+
+          {/* Department Breakdown & Monthly Trajectory */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: "20px", marginBottom: "20px" }}>
+            <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+              <h3 style={{ margin: "0 0 14px", fontSize: "1.05rem", fontWeight: 700 }}>Department Breakdown</h3>
+              <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+                {(orgData?.departments || []).map((dept) => {
+                  const maxEm = Math.max(...(orgData?.departments || []).map((d) => Number(d.emissions || 1)), 1);
+                  const pct = Math.round((Number(dept.emissions) / maxEm) * 100);
+                  return (
+                    <div key={dept.name} style={{ padding: "10px", borderRadius: "8px", background: "var(--bg-subtle)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", marginBottom: "4px" }}>
+                        <strong>{dept.name}</strong>
+                        <span>{Number(dept.emissions).toFixed(1)} kg CO₂e ({dept.memberCount} members)</span>
+                      </div>
+                      <div style={{ height: "6px", borderRadius: 999, background: "var(--border)", overflow: "hidden" }}>
+                        <div style={{ width: `${pct}%`, height: "100%", background: "var(--primary)", borderRadius: 999 }} />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+              <h3 style={{ margin: "0 0 14px", fontSize: "1.05rem", fontWeight: 700 }}>Monthly Trajectory</h3>
+              <div style={{ height: "200px" }}>
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={orgData?.monthlyTrends || []}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                    <XAxis dataKey="month" tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                    <YAxis tick={{ fontSize: 10, fill: "var(--text-muted)" }} />
+                    <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]} />
+                    <Bar dataKey="co2e" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* SECTION 2: MEMBERS MANAGEMENT                                        */}
+      {/* ==================================================================== */}
+      {activeTab === "members" && (
+        <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+          {/* Search & Filter Toolbar */}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "12px", marginBottom: "16px" }}>
+            <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap", flex: 1 }}>
+              <div style={{ position: "relative", minWidth: "220px" }}>
+                <Search size={15} style={{ position: "absolute", left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--text-muted)" }} />
+                <input
+                  type="text"
+                  placeholder="Search members or departments..."
+                  value={search}
+                  onChange={(e) => {
+                    setSearch(e.target.value);
                     setCurrentPage(1);
                   }}
                   style={{
-                    position: "absolute",
-                    right: "10px",
-                    top: "50%",
-                    transform: "translateY(-50%)",
-                    background: "transparent",
-                    border: "none",
-                    cursor: "pointer",
-                    color: "var(--text-muted)",
-                    padding: "2px",
-                    display: "flex",
-                    alignItems: "center",
+                    padding: "8px 12px 8px 32px",
+                    borderRadius: "8px",
+                    border: "1px solid var(--border)",
+                    background: "var(--bg-subtle)",
+                    color: "var(--text-main)",
+                    fontSize: "0.84rem",
+                    outline: "none",
+                    width: "100%",
                   }}
-                  aria-label="Clear search query"
-                >
-                  <X size={14} />
-                </button>
-              )}
-            </div>
+                />
+              </div>
 
-            {/* Filter Controls */}
-            <div style={{ display: "flex", gap: "10px", flexWrap: "wrap", alignItems: "center" }}>
-              {/* Role filter */}
               <select
                 value={roleFilter}
-                onChange={(e) => {
-                  setRoleFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                }}
+                onChange={(e) => { setRoleFilter(e.target.value); setCurrentPage(1); }}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", fontSize: "0.84rem" }}
               >
                 <option value="ALL">All Roles</option>
-                <option value="OWNER">Owner</option>
-                <option value="ADMIN">Admin</option>
-                <option value="MEMBER">Member</option>
+                <option value="OWNER">Owners</option>
+                <option value="ADMIN">Admins</option>
+                <option value="MEMBER">Members</option>
               </select>
 
-              {/* Department filter */}
               <select
                 value={deptFilter}
-                onChange={(e) => {
-                  setDeptFilter(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                }}
+                onChange={(e) => { setDeptFilter(e.target.value); setCurrentPage(1); }}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", fontSize: "0.84rem" }}
               >
                 <option value="ALL">All Departments</option>
-                {allDepartments.map((dept) => (
-                  <option key={dept} value={dept}>
-                    {dept}
-                  </option>
+                {allDepartments.map((d) => (
+                  <option key={d} value={d}>{d}</option>
                 ))}
               </select>
 
-              {/* Sort by */}
               <select
                 value={sortBy}
-                onChange={(e) => {
-                  setSortBy(e.target.value);
-                  setCurrentPage(1);
-                }}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: "var(--radius-md)",
-                  border: "1px solid var(--border)",
-                  background: "var(--bg-card)",
-                  color: "var(--text-primary)",
-                  fontSize: "13px",
-                }}
+                onChange={(e) => { setSortBy(e.target.value); setCurrentPage(1); }}
+                style={{ padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", fontSize: "0.84rem" }}
               >
-                <option value="emissions">Lowest Emissions</option>
-                <option value="activities">Most Activities</option>
-                <option value="name">Name (A-Z)</option>
+                <option value="emissions">Sort by Emissions (Lowest first)</option>
+                <option value="activities">Sort by Activity Count</option>
+                <option value="name">Sort by Name</option>
               </select>
+            </div>
+
+            <div style={{ display: "flex", gap: "6px" }}>
+              <button
+                type="button"
+                onClick={() => setViewMode("table")}
+                className={`btn-outline ${viewMode === "table" ? "active" : ""}`}
+                style={{ padding: "6px 10px", borderRadius: "6px" }}
+                title="Table View"
+              >
+                <TableIcon size={16} />
+              </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("cards")}
+                className={`btn-outline ${viewMode === "cards" ? "active" : ""}`}
+                style={{ padding: "6px 10px", borderRadius: "6px" }}
+                title="Cards View"
+              >
+                <LayoutGrid size={16} />
+              </button>
             </div>
           </div>
 
-          {/* Members Table View */}
-          {loading ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              <RefreshCw size={24} className="animate-spin" style={{ margin: "0 auto 10px" }} />
-              <p>Loading members...</p>
-            </div>
-          ) : filteredMembers.length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              <Users size={32} style={{ margin: "0 auto 10px", opacity: 0.5 }} />
-              <h4>No members found</h4>
-              <p style={{ fontSize: "13px" }}>Try adjusting your search criteria or invite a new member.</p>
-            </div>
-          ) : viewMode === "table" ? (
-            <div className="table-responsive">
-              <table className="roster-table">
+          {/* Members Table */}
+          {viewMode === "table" ? (
+            <div style={{ overflowX: "auto" }}>
+              <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
                 <thead>
-                  <tr>
-                    <th>Member</th>
-                    <th>Department</th>
-                    <th>Role</th>
-                    <th>Activities</th>
-                    <th>Carbon Output</th>
-                    {isAdminOrOwner && <th style={{ textAlign: "right" }}>Actions</th>}
+                  <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left", color: "var(--text-muted)" }}>
+                    <th style={{ padding: "10px" }}>Member</th>
+                    <th style={{ padding: "10px" }}>Department</th>
+                    <th style={{ padding: "10px" }}>Role</th>
+                    <th style={{ padding: "10px" }}>Emissions</th>
+                    <th style={{ padding: "10px" }}>Logs</th>
+                    {isAdminOrOwner && <th style={{ padding: "10px", textAlign: "right" }}>Actions</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {paginatedMembers.map((m) => (
-                    <tr key={m.userId}>
-                      <td>
+                    <tr key={m.memberId} style={{ borderBottom: "1px solid var(--border)" }}>
+                      <td style={{ padding: "10px" }}>
                         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                          <UserAvatar
-                            src={m.avatarUrl}
-                            seed={m.avatarSeed || m.userId}
-                            name={m.name}
-                            email={m.email}
-                            size={36}
-                          />
+                          <UserAvatar src={m.avatarUrl} seed={m.avatarSeed} name={m.name} size={32} />
                           <div>
-                            <strong>{m.name}</strong>
-                            <p className="table-email" style={{ margin: 0, fontSize: "12px", color: "var(--text-muted)" }}>
-                              {m.email}
-                            </p>
+                            <div style={{ fontWeight: 600 }}>{m.name}</div>
+                            <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>{m.email}</div>
                           </div>
                         </div>
                       </td>
-
-                      <td>
-                        <span className="dept-badge">{m.department || "Operations"}</span>
+                      <td style={{ padding: "10px" }}>
+                        <span style={{ padding: "2px 8px", borderRadius: "6px", background: "var(--bg-subtle)", fontSize: "0.76rem" }}>
+                          {m.department || "General"}
+                        </span>
                       </td>
-
-                      <td>
-                        <span
-                          style={{
-                            display: "inline-block",
-                            padding: "3px 8px",
-                            borderRadius: "4px",
-                            fontSize: "11px",
-                            fontWeight: "700",
-                            background:
-                              m.role === "OWNER"
-                                ? "rgba(245, 158, 11, 0.15)"
-                                : m.role === "ADMIN"
-                                ? "rgba(16, 185, 129, 0.15)"
-                                : "rgba(148, 163, 184, 0.15)",
-                            color:
-                              m.role === "OWNER"
-                                ? "#d97706"
-                                : m.role === "ADMIN"
-                                ? "#10b981"
-                                : "var(--text-muted)",
-                          }}
-                        >
+                      <td style={{ padding: "10px" }}>
+                        <span style={{ fontWeight: 700, fontSize: "0.76rem", color: m.role === "OWNER" ? "#d97706" : m.role === "ADMIN" ? "#10b981" : "var(--text-muted)" }}>
                           {m.role}
                         </span>
                       </td>
-
-                      <td>
-                        <strong>{m.activitiesCount || 0}</strong> entries
+                      <td style={{ padding: "10px", fontWeight: 700 }}>
+                        {Number(m.emissions).toFixed(1)} kg
                       </td>
-
-                      <td>
-                        <strong style={{ color: "var(--text-main)" }}>{Number(m.emissions).toFixed(1)}</strong> kg CO₂e
+                      <td style={{ padding: "10px", color: "var(--text-muted)" }}>
+                        {m.activitiesCount}
                       </td>
-
                       {isAdminOrOwner && (
-                        <td style={{ textAlign: "right" }}>
+                        <td style={{ padding: "10px", textAlign: "right" }}>
                           {m.role !== "OWNER" && (
                             <div style={{ display: "inline-flex", gap: "6px" }}>
-                              {/* Change role button */}
-                              {isOwner && (
-                                <button
-                                  type="button"
-                                  className="btn-outline"
-                                  style={{ padding: "4px 8px", fontSize: "11px" }}
-                                  title={m.role === "ADMIN" ? "Demote to Member" : "Promote to Admin"}
-                                  onClick={() => handleUpdateRole(m.userId, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
-                                >
-                                  {m.role === "ADMIN" ? "Make Member" : "Make Admin"}
-                                </button>
-                              )}
-
-                              {/* Remove member button */}
                               <button
                                 type="button"
-                                className="btn-outline-danger"
-                                style={{ padding: "4px 8px" }}
-                                title="Remove member"
-                                onClick={() => setMemberToRemove(m)}
+                                className="btn-outline"
+                                onClick={() => {
+                                  setTargetMemberForDept(m);
+                                  setChangeDeptModalOpen(true);
+                                }}
+                                style={{ padding: "4px 8px", fontSize: "0.74rem" }}
                               >
-                                <Trash2 size={13} />
+                                Dept
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-outline"
+                                onClick={() => handleUpdateRole(m.userId, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                                style={{ padding: "4px 8px", fontSize: "0.74rem" }}
+                              >
+                                {m.role === "ADMIN" ? "Demote" : "Promote"}
+                              </button>
+                              <button
+                                type="button"
+                                className="btn-outline"
+                                onClick={() => setMemberToRemove(m)}
+                                style={{ padding: "4px 8px", fontSize: "0.74rem", color: "#ef4444" }}
+                              >
+                                <Trash2 size={12} />
                               </button>
                             </div>
                           )}
@@ -1151,92 +1004,52 @@ export default function Organisation({ token }) {
                       )}
                     </tr>
                   ))}
+                  {paginatedMembers.length === 0 && (
+                    <tr>
+                      <td colSpan={6} style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)" }}>
+                        No members match your search criteria.
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
           ) : (
-            /* Card Grid View */
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))", gap: "16px" }}>
+            /* Cards View */
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "14px" }}>
               {paginatedMembers.map((m) => (
-                <div
-                  key={m.userId}
-                  className="panel"
-                  style={{
-                    padding: "18px",
-                    display: "flex",
-                    flexDirection: "column",
-                    justifyContent: "space-between",
-                    position: "relative",
-                  }}
-                >
-                  <div>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "12px" }}>
-                      <UserAvatar
-                        src={m.avatarUrl}
-                        seed={m.avatarSeed || m.userId}
-                        name={m.name}
-                        email={m.email}
-                        size={44}
-                      />
-
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: "700",
-                          padding: "2px 8px",
-                          borderRadius: "4px",
-                          background:
-                            m.role === "OWNER"
-                              ? "rgba(245, 158, 11, 0.15)"
-                              : m.role === "ADMIN"
-                              ? "rgba(16, 185, 129, 0.15)"
-                              : "rgba(148, 163, 184, 0.15)",
-                          color:
-                            m.role === "OWNER"
-                              ? "#d97706"
-                              : m.role === "ADMIN"
-                              ? "#10b981"
-                              : "var(--text-muted)",
-                        }}
-                      >
-                        {m.role}
-                      </span>
-                    </div>
-
-                    <h4 style={{ fontSize: "16px", fontWeight: "700", marginBottom: "2px" }}>{m.name}</h4>
-                    <p style={{ color: "var(--text-muted)", fontSize: "12.5px", marginBottom: "12px" }}>{m.email}</p>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", borderTop: "1px solid var(--border)", paddingTop: "10px", marginBottom: "10px" }}>
-                      <span style={{ color: "var(--text-muted)" }}>Department</span>
-                      <strong style={{ color: "var(--text-main)" }}>{m.department || "Operations"}</strong>
-                    </div>
-
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "8px" }}>
-                      <span style={{ color: "var(--text-muted)" }}>Emissions</span>
-                      <strong style={{ color: "var(--emerald)" }}>{Number(m.emissions).toFixed(1)} kg CO₂e</strong>
+                <div key={m.memberId} style={{ padding: "14px", borderRadius: "10px", background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+                    <UserAvatar src={m.avatarUrl} seed={m.avatarSeed} name={m.name} size={40} />
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{m.name}</div>
+                      <div style={{ fontSize: "0.74rem", color: "var(--text-muted)" }}>{m.department || "General"}</div>
                     </div>
                   </div>
-
+                  <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", marginBottom: "10px" }}>
+                    <span>Role: <strong>{m.role}</strong></span>
+                    <span>Footprint: <strong>{Number(m.emissions).toFixed(1)} kg</strong></span>
+                  </div>
                   {isAdminOrOwner && m.role !== "OWNER" && (
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "10px", marginTop: "10px" }}>
-                      {isOwner ? (
-                        <button
-                          type="button"
-                          className="btn-outline"
-                          style={{ fontSize: "11px", padding: "4px 8px" }}
-                          onClick={() => handleUpdateRole(m.userId, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
-                        >
-                          {m.role === "ADMIN" ? "Demote" : "Promote Admin"}
-                        </button>
-                      ) : <span />}
-
+                    <div style={{ display: "flex", gap: "6px" }}>
                       <button
                         type="button"
-                        className="btn-outline-danger"
-                        style={{ fontSize: "11px", padding: "4px 8px" }}
-                        onClick={() => setMemberToRemove(m)}
+                        className="btn-outline"
+                        onClick={() => {
+                          setTargetMemberForDept(m);
+                          setChangeDeptModalOpen(true);
+                        }}
+                        style={{ flex: 1, padding: "4px 8px", fontSize: "0.74rem" }}
                       >
-                        Remove
+                        Change Dept
+                      </button>
+                      <button
+                        type="button"
+                        className="btn-outline"
+                        onClick={() => handleUpdateRole(m.userId, m.role === "ADMIN" ? "MEMBER" : "ADMIN")}
+                        style={{ flex: 1, padding: "4px 8px", fontSize: "0.74rem" }}
+                      >
+                        {m.role === "ADMIN" ? "Demote" : "Promote"}
                       </button>
                     </div>
                   )}
@@ -1245,45 +1058,30 @@ export default function Organisation({ token }) {
             </div>
           )}
 
-          {/* Pagination Controls */}
-          {!loading && filteredMembers.length > pageSize && (
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                flexWrap: "wrap",
-                gap: "12px",
-                marginTop: "18px",
-                paddingTop: "14px",
-                borderTop: "1px solid var(--border)",
-                fontSize: "13px",
-              }}
-            >
-              <span style={{ color: "var(--text-muted)" }}>
-                Showing {(safePage - 1) * pageSize + 1}–{Math.min(safePage * pageSize, filteredMembers.length)} of {filteredMembers.length} members
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: "16px" }}>
+              <span style={{ fontSize: "0.78rem", color: "var(--text-muted)" }}>
+                Page {safePage} of {totalPages} ({filteredMembers.length} members)
               </span>
-              <div style={{ display: "inline-flex", alignItems: "center", gap: "8px" }}>
+              <div style={{ display: "flex", gap: "6px" }}>
                 <button
                   type="button"
                   className="btn-outline"
                   disabled={safePage <= 1}
                   onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                  style={{ padding: "6px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  style={{ padding: "4px 10px", fontSize: "0.78rem" }}
                 >
-                  <ChevronLeft size={14} /> Previous
+                  Prev
                 </button>
-                <span style={{ fontWeight: 600, color: "var(--text-main)" }}>
-                  Page {safePage} of {totalPages}
-                </span>
                 <button
                   type="button"
                   className="btn-outline"
                   disabled={safePage >= totalPages}
                   onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                  style={{ padding: "6px 10px", display: "inline-flex", alignItems: "center", gap: "4px" }}
+                  style={{ padding: "4px 10px", fontSize: "0.78rem" }}
                 >
-                  Next <ChevronRight size={14} />
+                  Next
                 </button>
               </div>
             </div>
@@ -1291,68 +1089,75 @@ export default function Organisation({ token }) {
         </div>
       )}
 
-      {/* ========================================================
-          TAB 2: DEPARTMENTS BREAKDOWN
-         ======================================================== */}
+      {/* ==================================================================== */}
+      {/* SECTION 3: DEPARTMENTS                                               */}
+      {/* ==================================================================== */}
       {activeTab === "departments" && (
-        <div className="panel" style={{ padding: "24px" }}>
-          <div style={{ marginBottom: "20px" }}>
-            <h3 style={{ fontSize: "18px", fontWeight: "700" }}>Department Emissions Breakdown</h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "13.5px" }}>
-              Aggregate carbon footprint categorized by organizational unit.
-            </p>
+        <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
+            <div>
+              <h3 style={{ margin: "0 0 2px", fontSize: "1.05rem", fontWeight: 700 }}>Department Roster & Emissions</h3>
+              <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Organize members by team to track operational benchmarks and departmental reductions.
+              </p>
+            </div>
+
+            {isAdminOrOwner && (
+              <button
+                type="button"
+                className="btn-primary"
+                onClick={() => setAddDeptModalOpen(true)}
+                style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", fontSize: "0.85rem", borderRadius: "8px" }}
+              >
+                <Plus size={15} /> Add Department
+              </button>
+            )}
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "20px" }}>
-            {orgData?.departments?.map((dept) => {
-              const maxVal = Math.max(...(orgData?.departments || []).map((d) => Number(d.emissions || 1)), 1);
-              const pct = Math.round((Number(dept.emissions) / maxVal) * 100);
-
-              return (
-                <div key={dept.name} className="panel" style={{ padding: "18px", background: "var(--bg-app)" }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                    <strong style={{ fontSize: "15px", color: "var(--text-primary)" }}>{dept.name}</strong>
-                    <span style={{ fontSize: "12px", color: "var(--text-muted)" }}>
-                      {dept.memberCount || 1} {dept.memberCount === 1 ? "member" : "members"}
-                    </span>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px" }}>
+            {(orgData?.departments || []).map((dept) => (
+              <div key={dept.name} style={{ padding: "16px", borderRadius: "10px", background: "var(--bg-subtle)", border: "1px solid var(--border)" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                    <Briefcase size={16} style={{ color: "var(--primary)" }} />
+                    <strong style={{ fontSize: "0.95rem" }}>{dept.name}</strong>
                   </div>
-
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: "10px" }}>
-                    <span style={{ fontSize: "20px", fontWeight: "800", color: "var(--text-primary)" }}>
-                      {Number(dept.emissions).toFixed(1)} <span style={{ fontSize: "12px" }}>kg CO₂e</span>
-                    </span>
-                    <span style={{ fontSize: "12px", color: "var(--primary-emerald)", fontWeight: "600" }}>
-                      {pct}% of max
-                    </span>
-                  </div>
-
-                  <div style={{ height: "8px", borderRadius: "999px", background: "var(--border)", overflow: "hidden" }}>
-                    <div
-                      style={{
-                        height: "100%",
-                        borderRadius: "999px",
-                        width: `${pct}%`,
-                        background: "linear-gradient(90deg, var(--primary-forest), var(--primary-emerald))",
-                      }}
-                    />
-                  </div>
+                  <span style={{ fontSize: "0.76rem", color: "var(--text-muted)" }}>
+                    {dept.memberCount || 1} members
+                  </span>
                 </div>
-              );
-            })}
+
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", margin: "8px 0" }}>
+                  <span style={{ color: "var(--text-muted)" }}>Total Footprint:</span>
+                  <strong>{Number(dept.emissions || 0).toFixed(1)} kg CO₂e</strong>
+                </div>
+
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: "0.82rem", marginBottom: "12px" }}>
+                  <span style={{ color: "var(--text-muted)" }}>Avg per Member:</span>
+                  <strong>{Number(dept.averagePerMemberKg || 0).toFixed(1)} kg</strong>
+                </div>
+
+                {Array.isArray(dept.members) && dept.members.length > 0 && (
+                  <div style={{ fontSize: "0.75rem", color: "var(--text-muted)", borderTop: "1px solid var(--border)", paddingTop: "8px" }}>
+                    <span>Members: {dept.members.slice(0, 3).join(", ")}{dept.members.length > 3 ? ` +${dept.members.length - 3} more` : ""}</span>
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         </div>
       )}
 
-      {/* ========================================================
-          TAB 3: PENDING INVITATIONS
-         ======================================================== */}
+      {/* ==================================================================== */}
+      {/* SECTION 4: INVITATIONS                                               */}
+      {/* ==================================================================== */}
       {activeTab === "invitations" && isAdminOrOwner && (
-        <div className="panel" style={{ padding: "24px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px", flexWrap: "wrap", gap: "12px" }}>
+        <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px", flexWrap: "wrap", gap: "10px" }}>
             <div>
-              <h3 style={{ fontSize: "18px", fontWeight: "700" }}>Pending Member Invitations</h3>
-              <p style={{ color: "var(--text-muted)", fontSize: "13.5px" }}>
-                Invitations dispatched awaiting acceptance by recipients.
+              <h3 style={{ margin: "0 0 2px", fontSize: "1.05rem", fontWeight: 700 }}>Pending Organization Invitations</h3>
+              <p style={{ margin: 0, fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Invitations for coworkers to join this organization workspace.
               </p>
             </div>
 
@@ -1360,411 +1165,634 @@ export default function Organisation({ token }) {
               type="button"
               className="btn-primary"
               onClick={() => setInviteModalOpen(true)}
-              style={{ display: "inline-flex", alignItems: "center", gap: "6px" }}
+              style={{ display: "inline-flex", alignItems: "center", gap: "6px", padding: "8px 14px", fontSize: "0.85rem", borderRadius: "8px" }}
             >
-              <UserPlus size={16} /> New Invite
+              <UserPlus size={15} /> New Invitation
             </button>
           </div>
 
-          {/* Friends & Family / Direct Shareable Invite Link Callout */}
-          <div
-            className="card-panel"
-            style={{
-              padding: "16px 20px",
-              marginBottom: "20px",
-              background: "linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(59, 130, 246, 0.06) 100%)",
-              border: "1px solid rgba(16, 185, 129, 0.25)",
-              borderRadius: "12px",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center",
-              flexWrap: "wrap",
-              gap: "14px",
-            }}
-          >
-            <div>
-              <div style={{ fontWeight: 700, fontSize: "0.95rem", color: "var(--text-main)", display: "flex", alignItems: "center", gap: "6px" }}>
-                <span>Friends, Family & Team Direct Link</span>
-              </div>
-              <p style={{ margin: "3px 0 0", color: "var(--text-muted)", fontSize: "0.84rem", maxWidth: "520px" }}>
-                Share an instant invitation link directly with coworkers, friends, or family members to collaborate on sustainability goals.
-              </p>
-            </div>
-
-            <button
-              type="button"
-              className="btn-primary-gradient"
-              onClick={() => {
-                const pendingInv = (orgData?.invitations || [])[0];
-                const tokenVal = pendingInv ? pendingInv.invitationToken : orgData?.organizationId;
-                const link = `${window.location.origin}/accept-invite?token=${tokenVal}`;
-                navigator.clipboard.writeText(link);
-                setCopiedLink(true);
-                showToast("Direct invite link copied to clipboard!");
-                setTimeout(() => setCopiedLink(false), 2500);
-              }}
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "6px",
-                padding: "8px 16px",
-                fontSize: "0.85rem",
-                borderRadius: "8px",
-              }}
-            >
-              {copiedLink ? <Check size={15} /> : <Copy size={15} />}
-              <span>{copiedLink ? "Link Copied!" : "Copy Direct Invite Link"}</span>
-            </button>
-          </div>
-
-          {(orgData?.invitations || []).length === 0 ? (
-            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted)" }}>
-              <Clock size={32} style={{ margin: "0 auto 10px", opacity: 0.5 }} />
-              <h4>No pending invitations</h4>
-              <p style={{ fontSize: "13px" }}>All invited members have already joined this organization.</p>
-            </div>
-          ) : (
-            <div className="table-responsive">
-              <table className="roster-table">
-                <thead>
-                  <tr>
-                    <th>Invited Email</th>
-                    <th>Assigned Role</th>
-                    <th>Department</th>
-                    <th>Invite Link</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(orgData?.invitations || []).map((inv) => (
-                    <tr key={inv.id}>
-                      <td>
-                        <strong>{inv.email}</strong>
-                      </td>
-                      <td>
-                        <span className="dept-badge">{inv.role}</span>
-                      </td>
-                      <td>{inv.department || "Engineering"}</td>
-                      <td>
+          <div style={{ overflowX: "auto" }}>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.85rem" }}>
+              <thead>
+                <tr style={{ borderBottom: "2px solid var(--border)", textAlign: "left", color: "var(--text-muted)" }}>
+                  <th style={{ padding: "10px" }}>Invited Email</th>
+                  <th style={{ padding: "10px" }}>Assigned Role</th>
+                  <th style={{ padding: "10px" }}>Department</th>
+                  <th style={{ padding: "10px" }}>Expires In</th>
+                  <th style={{ padding: "10px", textAlign: "right" }}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(orgData?.invitations || []).map((inv) => (
+                  <tr key={inv.id} style={{ borderBottom: "1px solid var(--border)" }}>
+                    <td style={{ padding: "10px", fontWeight: 600 }}>{inv.email}</td>
+                    <td style={{ padding: "10px" }}>{inv.role}</td>
+                    <td style={{ padding: "10px" }}>{inv.department || "General"}</td>
+                    <td style={{ padding: "10px", color: "var(--text-muted)" }}>
+                      {new Date(inv.expiresAt).toLocaleDateString()}
+                    </td>
+                    <td style={{ padding: "10px", textAlign: "right" }}>
+                      <div style={{ display: "inline-flex", gap: "6px" }}>
                         <button
                           type="button"
                           className="btn-outline"
-                          style={{ fontSize: "11px", padding: "4px 8px", display: "inline-flex", alignItems: "center", gap: "4px" }}
-                          onClick={() => {
-                            const link = `${window.location.origin}/accept-invite?token=${inv.invitationToken}`;
-                            navigator.clipboard.writeText(link);
-                            setCopiedToken(inv.id);
-                            showToast("Invite link copied!");
-                            setTimeout(() => setCopiedToken(null), 2000);
-                          }}
+                          onClick={() => handleCopyLink(inv.invitationToken)}
+                          style={{ padding: "4px 8px", fontSize: "0.74rem" }}
                         >
-                          {copiedToken === inv.id ? <Check size={12} /> : <Copy size={12} />}
-                          {copiedToken === inv.id ? "Copied" : "Copy Link"}
+                          {copiedToken === inv.invitationToken ? <Check size={13} /> : <Copy size={13} />}
+                          <span>Link</span>
                         </button>
-                      </td>
-                      <td style={{ textAlign: "right" }}>
-                        <div style={{ display: "inline-flex", gap: "6px" }}>
-                          <button
-                            type="button"
-                            className="btn-outline"
-                            style={{ fontSize: "12px", padding: "4px 10px" }}
-                            onClick={() => handleResendInvitation(inv.id)}
-                            title="Resend invitation email"
-                          >
-                            Resend
-                          </button>
-                          <button
-                            type="button"
-                            className="btn-outline-danger"
-                            style={{ fontSize: "12px", padding: "4px 8px" }}
-                            onClick={() => handleRevokeInvitation(inv.id)}
-                            title="Revoke invitation"
-                          >
-                            Revoke
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          onClick={() => handleResendInvite(inv.id)}
+                          style={{ padding: "4px 8px", fontSize: "0.74rem" }}
+                        >
+                          Resend
+                        </button>
+                        <button
+                          type="button"
+                          className="btn-outline"
+                          onClick={() => handleRevokeInvite(inv.id)}
+                          style={{ padding: "4px 8px", fontSize: "0.74rem", color: "#ef4444" }}
+                        >
+                          Revoke
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {(orgData?.invitations || []).length === 0 && (
+                  <tr>
+                    <td colSpan={5} style={{ padding: "24px", textAlign: "center", color: "var(--text-muted)" }}>
+                      No pending organization invitations dispatched.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* SECTION 5: ORGANIZATION ANALYTICS                                    */}
+      {/* ==================================================================== */}
+      {activeTab === "analytics" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          {/* Department Comparison Bar Chart */}
+          <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: "1.05rem", fontWeight: 700 }}>
+              Department Footprint Comparison
+            </h3>
+            <div style={{ height: "260px" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={orgData?.departments || []} margin={{ top: 10, right: 10, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+                  <YAxis tick={{ fontSize: 11, fill: "var(--text-muted)" }} />
+                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]} />
+                  <Bar dataKey="emissions" name="Total Emissions" fill="#8D9B72" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="averagePerMemberKg" name="Avg / Employee" fill="#5C8CA6" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* Category Distribution Donut */}
+          <div className="panel" style={{ padding: "20px", borderRadius: "14px" }}>
+            <h3 style={{ margin: "0 0 14px", fontSize: "1.05rem", fontWeight: 700 }}>
+              Organization Emissions by Activity Segment
+            </h3>
+            <div style={{ height: "220px" }}>
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={orgData?.categoryBreakdown || []}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={85}
+                    paddingAngle={3}
+                  >
+                    {(orgData?.categoryBreakdown || []).map((entry, idx) => (
+                      <Cell key={entry.name} fill={ORG_CHART_COLORS[idx % ORG_CHART_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <Tooltip formatter={(val) => [`${Number(val).toFixed(2)} kg CO₂e`, "Emissions"]} />
+                  <Legend />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
+      {/* SECTION 6: SETTINGS                                                  */}
+      {/* ==================================================================== */}
+      {activeTab === "settings" && isAdminOrOwner && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+          <div className="panel" style={{ padding: "24px", borderRadius: "14px" }}>
+            <h3 style={{ margin: "0 0 16px", fontSize: "1.05rem", fontWeight: 700 }}>
+              Organization Profile & Settings
+            </h3>
+
+            <form onSubmit={handleEditOrgSubmit}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))", gap: "16px", marginBottom: "16px" }}>
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px" }}>
+                    Organization Name
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editName}
+                    onChange={(e) => setEditName(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px" }}>
+                    Organization Type / Industry
+                  </label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", boxSizing: "border-box" }}
+                  >
+                    <option value="COMPANY">Company / Enterprise</option>
+                    <option value="UNIVERSITY">University / Academic</option>
+                    <option value="NGO">NGO / Non-Profit</option>
+                    <option value="GOVERNMENT">Government Agency</option>
+                    <option value="OTHER">Other</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px" }}>
+                    Website URL
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="https://example.com"
+                    value={editWebsite}
+                    onChange={(e) => setEditWebsite(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", boxSizing: "border-box" }}
+                  />
+                </div>
+
+                <div>
+                  <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px" }}>
+                    Contact Email
+                  </label>
+                  <input
+                    type="email"
+                    placeholder="sustainability@example.com"
+                    value={editContactEmail}
+                    onChange={(e) => setEditContactEmail(e.target.value)}
+                    style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", boxSizing: "border-box" }}
+                  />
+                </div>
+              </div>
+
+              <div style={{ marginBottom: "16px" }}>
+                <label style={{ display: "block", fontSize: "0.82rem", fontWeight: 600, marginBottom: "6px" }}>
+                  Description / Sustainability Mandate
+                </label>
+                <textarea
+                  rows={2}
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  style={{ width: "100%", padding: "8px 12px", borderRadius: "8px", border: "1px solid var(--border)", background: "var(--bg-subtle)", color: "var(--text-main)", boxSizing: "border-box" }}
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={editLoading}
+                className="btn-primary"
+                style={{ padding: "9px 20px", fontSize: "0.86rem", borderRadius: "8px" }}
+              >
+                {editLoading ? "Saving Changes..." : "Save Settings"}
+              </button>
+            </form>
+          </div>
+
+          {/* Owner Danger Zone */}
+          {isOwner && (
+            <div className="panel" style={{ padding: "20px 24px", borderRadius: "14px", border: "1px solid rgba(239, 68, 68, 0.3)" }}>
+              <h4 style={{ margin: "0 0 6px", color: "#ef4444", fontSize: "0.95rem" }}>
+                Danger Zone: Delete Organization
+              </h4>
+              <p style={{ margin: "0 0 14px", fontSize: "0.82rem", color: "var(--text-muted)" }}>
+                Permanently removes the organization workspace and unlinks all members. This cannot be undone.
+              </p>
+              <button
+                type="button"
+                onClick={() => setDeleteConfirmOpen(true)}
+                style={{
+                  padding: "8px 16px",
+                  borderRadius: "8px",
+                  background: "#ef4444",
+                  color: "#ffffff",
+                  border: "none",
+                  fontWeight: 600,
+                  fontSize: "0.82rem",
+                  cursor: "pointer",
+                }}
+              >
+                Delete Organization
+              </button>
             </div>
           )}
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: INVITE MEMBER
-         ======================================================== */}
+      {/* ==================================================================== */}
+      {/* MODALS                                                               */}
+      {/* ==================================================================== */}
+
+      {/* Modal: Invite Member */}
       {inviteModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-card">
-            <div className="modal-header">
-              <h3>Invite Team Member</h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setInviteModalOpen(false)}
-                aria-label="Close modal"
-              >
-                <X size={18} />
-              </button>
+        <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setInviteModalOpen(false); }}>
+          <div className="modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Invite Team Member to Organization</h3>
+              <button type="button" onClick={() => setInviteModalOpen(false)} style={closeBtnStyle}><X size={18} /></button>
             </div>
             <form onSubmit={handleInviteSubmit} style={{ padding: "20px" }}>
-              <div className="form-group" style={{ marginBottom: "14px" }}>
-                <label>Recipient Email Address *</label>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={labelStyle}>Colleague's Work Email</label>
                 <input
                   type="email"
-                  placeholder="employee@company.com"
+                  required
+                  placeholder="colleague@company.com"
                   value={inviteEmail}
                   onChange={(e) => setInviteEmail(e.target.value)}
-                  required
+                  style={inputStyle}
                 />
               </div>
 
-              <div className="form-row-two-col">
-                <div className="form-group">
-                  <label>Role</label>
-                  <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)}>
-                    <option value="MEMBER">Member</option>
-                    <option value="ADMIN">Administrator</option>
-                  </select>
-                </div>
-
-                <div className="form-group">
-                  <label>Department</label>
-                  <select value={inviteDept} onChange={(e) => setInviteDept(e.target.value)}>
-                    <option value="Engineering">Engineering</option>
-                    <option value="Operations">Operations</option>
-                    <option value="Marketing">Marketing</option>
-                    <option value="Finance">Finance</option>
-                    <option value="Human Resources">Human Resources</option>
-                    <option value="Product">Product</option>
-                    <option value="Sustainability">Sustainability</option>
-                  </select>
-                </div>
-              </div>
-
-              <p style={{ fontSize: "12px", color: "var(--text-muted)", marginBottom: "18px" }}>
-                If the user has an existing account, they will be joined immediately. Otherwise, a pending invitation will be dispatched.
-              </p>
-
-              <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                <button type="button" className="btn-outline" onClick={() => setInviteModalOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary" disabled={inviteLoading}>
-                  {inviteLoading ? "Sending..." : "Send Invitation"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================================
-          MODAL: EDIT ORGANIZATION DETAILS
-         ======================================================== */}
-      {editOrgModalOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ maxWidth: "540px" }}>
-            <div className="modal-header">
-              <h3>Organization Settings</h3>
-              <button
-                type="button"
-                className="modal-close-btn"
-                onClick={() => setEditOrgModalOpen(false)}
-                aria-label="Close modal"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <form onSubmit={handleEditOrgSubmit} style={{ padding: "20px" }}>
-              <div className="form-group" style={{ marginBottom: "14px" }}>
-                <label>Organization Name *</label>
-                <input
-                  type="text"
-                  value={editName}
-                  onChange={(e) => setEditName(e.target.value)}
-                  required
-                />
-              </div>
-
-              <div className="form-group" style={{ marginBottom: "14px" }}>
-                <label>Organization Category</label>
-                <select value={editType} onChange={(e) => setEditType(e.target.value)}>
-                  <option value="COMPANY">Company / Enterprise</option>
-                  <option value="UNIVERSITY">University / Education</option>
-                  <option value="NGO">Non-Profit / NGO</option>
-                  <option value="GOVERNMENT">Government Agency</option>
-                  <option value="OTHER">Community Coalition</option>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={labelStyle}>Assigned Role</label>
+                <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value)} style={inputStyle}>
+                  <option value="MEMBER">Member (Standard activity tracking)</option>
+                  <option value="ADMIN">Administrator (Can invite and manage)</option>
                 </select>
               </div>
 
-              <div className="form-group" style={{ marginBottom: "14px" }}>
-                <label>Description</label>
-                <textarea
-                  rows="2"
-                  value={editDescription}
-                  onChange={(e) => setEditDescription(e.target.value)}
-                  placeholder="Organization description and sustainability mission"
-                />
-              </div>
-
-              <div className="form-row-two-col">
-                <div className="form-group">
-                  <label>Website URL</label>
-                  <input
-                    type="url"
-                    value={editWebsite}
-                    onChange={(e) => setEditWebsite(e.target.value)}
-                    placeholder="https://company.com"
-                  />
-                </div>
-                <div className="form-group">
-                  <label>Contact Email</label>
-                  <input
-                    type="email"
-                    value={editContactEmail}
-                    onChange={(e) => setEditContactEmail(e.target.value)}
-                    placeholder="sustainability@company.com"
-                  />
-                </div>
-              </div>
-
-              <div className="form-group" style={{ marginBottom: "18px" }}>
-                <label>Logo Image URL</label>
+              <div style={{ marginBottom: "18px" }}>
+                <label style={labelStyle}>Department</label>
                 <input
-                  type="url"
-                  value={editLogoUrl}
-                  onChange={(e) => setEditLogoUrl(e.target.value)}
-                  placeholder="https://example.com/logo.png"
+                  type="text"
+                  placeholder="Engineering, Marketing, Operations..."
+                  value={inviteDept}
+                  onChange={(e) => setInviteDept(e.target.value)}
+                  style={inputStyle}
                 />
               </div>
 
-              {isOwner && (
-                <div style={{ borderTop: "1px solid var(--border)", paddingTop: "14px", marginBottom: "18px" }}>
-                  <label style={{ color: "#ef4444", fontWeight: "700", display: "block", marginBottom: "6px" }}>
-                    Danger Zone
-                  </label>
-                  <button
-                    type="button"
-                    className="btn-outline-danger"
-                    onClick={() => {
-                      setEditOrgModalOpen(false);
-                      setDeleteConfirmOpen(true);
-                    }}
-                  >
-                    Delete Organization
-                  </button>
-                </div>
-              )}
-
-              <div className="modal-footer" style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
-                <button type="button" className="btn-outline" onClick={() => setEditOrgModalOpen(false)}>
-                  Cancel
-                </button>
-                <button type="submit" className="btn-primary" disabled={editLoading}>
-                  {editLoading ? "Saving..." : "Save Changes"}
-                </button>
-              </div>
+              <button type="submit" disabled={inviteLoading} className="btn-primary" style={{ width: "100%", padding: "10px", borderRadius: "8px" }}>
+                {inviteLoading ? "Sending Invitation..." : "Send Invitation"}
+              </button>
             </form>
           </div>
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: REMOVE MEMBER CONFIRMATION
-         ======================================================== */}
+      {/* Modal: Add Department */}
+      {addDeptModalOpen && (
+        <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setAddDeptModalOpen(false); }}>
+          <div className="modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Add Organization Department</h3>
+              <button type="button" onClick={() => setAddDeptModalOpen(false)} style={closeBtnStyle}><X size={18} /></button>
+            </div>
+            <form onSubmit={handleAddDepartmentSubmit} style={{ padding: "20px" }}>
+              <div style={{ marginBottom: "14px" }}>
+                <label style={labelStyle}>Department Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Sustainability, Research & Development"
+                  value={newDeptName}
+                  onChange={(e) => setNewDeptName(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
+              <div style={{ marginBottom: "18px" }}>
+                <label style={labelStyle}>Assign Member (Optional)</label>
+                <select value={newDeptMemberId} onChange={(e) => setNewDeptMemberId(e.target.value)} style={inputStyle}>
+                  <option value="">None (create department placeholder)</option>
+                  {(orgData?.members || []).map((m) => (
+                    <option key={m.userId} value={m.userId}>{m.name} ({m.email})</option>
+                  ))}
+                </select>
+              </div>
+
+              <button type="submit" disabled={deptLoading} className="btn-primary" style={{ width: "100%", padding: "10px", borderRadius: "8px" }}>
+                {deptLoading ? "Saving..." : "Add Department"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Change Member Department */}
+      {changeDeptModalOpen && targetMemberForDept && (
+        <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setChangeDeptModalOpen(false); }}>
+          <div className="modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Assign Department: {targetMemberForDept.name}</h3>
+              <button type="button" onClick={() => setChangeDeptModalOpen(false)} style={closeBtnStyle}><X size={18} /></button>
+            </div>
+            <div style={{ padding: "20px" }}>
+              <label style={labelStyle}>Select or Enter Department</label>
+              <input
+                type="text"
+                defaultValue={targetMemberForDept.department || "General"}
+                id="target-dept-input"
+                style={inputStyle}
+              />
+              <div style={{ display: "flex", gap: "8px", marginTop: "16px" }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={() => {
+                    const val = document.getElementById("target-dept-input")?.value || "General";
+                    handleUpdateDept(targetMemberForDept.userId, val);
+                  }}
+                  style={{ flex: 1, padding: "10px", borderRadius: "8px" }}
+                >
+                  Save Department
+                </button>
+                <button
+                  type="button"
+                  className="btn-outline"
+                  onClick={() => setChangeDeptModalOpen(false)}
+                  style={{ padding: "10px", borderRadius: "8px" }}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Confirm Delete Member */}
       {memberToRemove && (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ maxWidth: "420px", textAlign: "center", padding: "24px" }}>
-            <div
-              style={{
-                width: "50px",
-                height: "50px",
-                borderRadius: "50%",
-                background: "rgba(239, 68, 68, 0.15)",
-                color: "#ef4444",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px",
-              }}
-            >
-              <Trash2 size={24} />
+        <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setMemberToRemove(null); }}>
+          <div className="modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem", color: "#ef4444" }}>Remove Team Member</h3>
+              <button type="button" onClick={() => setMemberToRemove(null)} style={closeBtnStyle}><X size={18} /></button>
             </div>
-
-            <h3 style={{ fontSize: "18px", fontWeight: "700", marginBottom: "8px" }}>
-              Remove {memberToRemove.name}?
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.5", marginBottom: "20px" }}>
-              Are you sure you want to remove <strong>{memberToRemove.email}</strong> from {orgData?.name}? They will lose access to team workspaces.
-            </p>
-
-            <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
-              <button type="button" className="btn-outline" onClick={() => setMemberToRemove(null)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={handleRemoveMember}
-              >
-                Yes, Remove
-              </button>
+            <div style={{ padding: "20px" }}>
+              <p style={{ margin: "0 0 16px", fontSize: "0.86rem", color: "var(--text-main)" }}>
+                Are you sure you want to remove <strong>{memberToRemove.name}</strong> from {orgData?.name}?
+              </p>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button type="button" onClick={handleRemoveMember} style={{ flex: 1, padding: "10px", borderRadius: "8px", background: "#ef4444", color: "#fff", border: "none", fontWeight: 700 }}>
+                  Confirm Removal
+                </button>
+                <button type="button" className="btn-outline" onClick={() => setMemberToRemove(null)} style={{ padding: "10px", borderRadius: "8px" }}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* ========================================================
-          MODAL: DELETE ORGANIZATION CONFIRMATION
-         ======================================================== */}
+      {/* Modal: Confirm Delete Org */}
       {deleteConfirmOpen && (
-        <div className="modal-backdrop">
-          <div className="modal-card" style={{ maxWidth: "440px", textAlign: "center", padding: "26px" }}>
-            <div
-              style={{
-                width: "52px",
-                height: "52px",
-                borderRadius: "50%",
-                background: "rgba(239, 68, 68, 0.15)",
-                color: "#ef4444",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                margin: "0 auto 16px",
-              }}
-            >
-              <ShieldAlert size={26} />
+        <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) setDeleteConfirmOpen(false); }}>
+          <div className="modal-card" style={modalCardStyle}>
+            <div style={modalHeaderStyle}>
+              <h3 style={{ margin: 0, fontSize: "1.05rem", color: "#ef4444" }}>Confirm Organization Deletion</h3>
+              <button type="button" onClick={() => setDeleteConfirmOpen(false)} style={closeBtnStyle}><X size={18} /></button>
             </div>
-
-            <h3 style={{ fontSize: "18px", fontWeight: "800", color: "#ef4444", marginBottom: "8px" }}>
-              Delete Organization Workspace?
-            </h3>
-            <p style={{ color: "var(--text-muted)", fontSize: "13.5px", lineHeight: "1.5", marginBottom: "20px" }}>
-              This will permanently delete <strong>{orgData?.name}</strong>, member rosters, and team analytics. This action cannot be undone.
-            </p>
-
-            <div style={{ display: "flex", justifyContent: "center", gap: "12px" }}>
-              <button type="button" className="btn-outline" onClick={() => setDeleteConfirmOpen(false)}>
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="btn-danger"
-                onClick={handleDeleteOrganization}
-              >
-                Delete Permanently
-              </button>
+            <div style={{ padding: "20px" }}>
+              <p style={{ margin: "0 0 16px", fontSize: "0.86rem", color: "var(--text-main)" }}>
+                Are you sure you want to delete <strong>{orgData?.name}</strong>? All organization data will be removed.
+              </p>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button type="button" onClick={handleDeleteOrg} style={{ flex: 1, padding: "10px", borderRadius: "8px", background: "#ef4444", color: "#fff", border: "none", fontWeight: 700 }}>
+                  Permanently Delete
+                </button>
+                <button type="button" className="btn-outline" onClick={() => setDeleteConfirmOpen(false)} style={{ padding: "10px", borderRadius: "8px" }}>
+                  Cancel
+                </button>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal: Create Organization (renders when "+ New Org" is clicked from any view) */}
-      {renderCreateOrgModal()}
+      {/* Modal: Create Org */}
+      {createOrgModalOpen && (
+        <CreateOrgModal
+          createName={createName}
+          setCreateName={setCreateName}
+          createType={createType}
+          setCreateType={setCreateType}
+          createDescription={createDescription}
+          setCreateDescription={setCreateDescription}
+          createWebsite={createWebsite}
+          setCreateWebsite={setCreateWebsite}
+          createContactEmail={createContactEmail}
+          setCreateContactEmail={setCreateContactEmail}
+          createLogoUrl={createLogoUrl}
+          setCreateLogoUrl={setCreateLogoUrl}
+          createDept={createDept}
+          setCreateDept={setCreateDept}
+          createLoading={createLoading}
+          onSubmit={handleCreateOrgSubmit}
+          onClose={() => setCreateOrgModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
+
+// Subcomponent: Create Organization Modal
+function CreateOrgModal({
+  createName,
+  setCreateName,
+  createType,
+  setCreateType,
+  createDescription,
+  setCreateDescription,
+  createWebsite,
+  setCreateWebsite,
+  createContactEmail,
+  setCreateContactEmail,
+  createLogoUrl,
+  setCreateLogoUrl,
+  createDept,
+  setCreateDept,
+  createLoading,
+  onSubmit,
+  onClose,
+}) {
+  return (
+    <div className="modal-overlay" style={modalOverlayStyle} onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="modal-card" style={{ ...modalCardStyle, maxWidth: "540px" }}>
+        <div style={modalHeaderStyle}>
+          <h3 style={{ margin: 0, fontSize: "1.05rem" }}>Create Organization Workspace</h3>
+          <button type="button" onClick={onClose} style={closeBtnStyle}><X size={18} /></button>
+        </div>
+        <form onSubmit={onSubmit} style={{ padding: "20px" }}>
+          <div style={{ marginBottom: "14px" }}>
+            <label style={labelStyle}>Organization Name</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. Acme Sustainability Inc."
+              value={createName}
+              onChange={(e) => setCreateName(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "14px" }}>
+            <div>
+              <label style={labelStyle}>Industry / Type</label>
+              <select value={createType} onChange={(e) => setCreateType(e.target.value)} style={inputStyle}>
+                <option value="COMPANY">Company</option>
+                <option value="UNIVERSITY">University</option>
+                <option value="NGO">NGO</option>
+                <option value="GOVERNMENT">Government</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+            <div>
+              <label style={labelStyle}>Your Department</label>
+              <input
+                type="text"
+                placeholder="Management, R&D..."
+                value={createDept}
+                onChange={(e) => setCreateDept(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "14px" }}>
+            <label style={labelStyle}>Description / Carbon Mission</label>
+            <textarea
+              rows={2}
+              placeholder="Our enterprise commitment to net-zero..."
+              value={createDescription}
+              onChange={(e) => setCreateDescription(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "12px", marginBottom: "18px" }}>
+            <div>
+              <label style={labelStyle}>Website (Optional)</label>
+              <input
+                type="text"
+                placeholder="https://..."
+                value={createWebsite}
+                onChange={(e) => setCreateWebsite(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+            <div>
+              <label style={labelStyle}>Contact Email</label>
+              <input
+                type="email"
+                placeholder="admin@..."
+                value={createContactEmail}
+                onChange={(e) => setCreateContactEmail(e.target.value)}
+                style={inputStyle}
+              />
+            </div>
+          </div>
+
+          <div style={{ marginBottom: "18px" }}>
+            <label style={labelStyle}>Logo URL (Optional)</label>
+            <input
+              type="text"
+              placeholder="https://.../logo.png"
+              value={createLogoUrl}
+              onChange={(e) => setCreateLogoUrl(e.target.value)}
+              style={inputStyle}
+            />
+          </div>
+
+          <button type="submit" disabled={createLoading} className="btn-primary" style={{ width: "100%", padding: "10px", borderRadius: "8px" }}>
+            {createLoading ? "Creating Organization..." : "Create Organization"}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const modalOverlayStyle = {
+  position: "fixed",
+  inset: 0,
+  backgroundColor: "rgba(0, 0, 0, 0.65)",
+  backdropFilter: "blur(4px)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  zIndex: 2100,
+  padding: "16px",
+};
+
+const modalCardStyle = {
+  background: "var(--bg-card)",
+  borderRadius: "14px",
+  border: "1px solid var(--border)",
+  width: "100%",
+  maxWidth: "460px",
+  maxHeight: "90vh",
+  overflowY: "auto",
+  boxShadow: "0 20px 40px rgba(0, 0, 0, 0.3)",
+};
+
+const modalHeaderStyle = {
+  padding: "16px 20px",
+  borderBottom: "1px solid var(--border)",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+};
+
+const closeBtnStyle = {
+  background: "transparent",
+  border: "none",
+  color: "var(--text-muted)",
+  cursor: "pointer",
+  padding: "4px",
+};
+
+const labelStyle = {
+  display: "block",
+  fontSize: "0.82rem",
+  fontWeight: 600,
+  marginBottom: "6px",
+  color: "var(--text-main)",
+};
+
+const inputStyle = {
+  width: "100%",
+  padding: "9px 12px",
+  borderRadius: "8px",
+  border: "1px solid var(--border)",
+  background: "var(--bg-subtle)",
+  color: "var(--text-main)",
+  fontSize: "0.85rem",
+  outline: "none",
+  boxSizing: "border-box",
+};

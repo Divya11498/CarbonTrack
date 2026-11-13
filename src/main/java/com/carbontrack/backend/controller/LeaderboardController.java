@@ -152,6 +152,32 @@ public class LeaderboardController {
             }
         }
 
+        BigDecimal sumEmissions = entries.stream()
+                .map(e -> (BigDecimal) e.get("emissions"))
+                .reduce(BigDecimal.ZERO, BigDecimal::add);
+        BigDecimal platformAvg = entries.isEmpty()
+                ? BigDecimal.ZERO
+                : sumEmissions.divide(BigDecimal.valueOf(entries.size()), 1, RoundingMode.HALF_UP);
+
+        BigDecimal userEmissions = BigDecimal.ZERO;
+        int userScore = 0;
+        BigDecimal gapToNextRank = BigDecimal.ZERO;
+        String nextRankName = null;
+
+        if (currentUserRank > 0 && currentUserRank <= entries.size()) {
+            Map<String, Object> myEntry = entries.get(currentUserRank - 1);
+            userEmissions = (BigDecimal) myEntry.get("emissions");
+            userScore = (int) myEntry.get("score");
+
+            if (currentUserRank > 1) {
+                Map<String, Object> aboveEntry = entries.get(currentUserRank - 2);
+                BigDecimal aboveEm = (BigDecimal) aboveEntry.get("emissions");
+                BigDecimal diff = userEmissions.subtract(aboveEm);
+                gapToNextRank = diff.compareTo(BigDecimal.ZERO) > 0 ? diff : BigDecimal.valueOf(0.5);
+                nextRankName = (String) aboveEntry.get("name");
+            }
+        }
+
         int percentile = (currentUserRank > 0 && !entries.isEmpty())
                 ? (int) Math.max(1, Math.round((currentUserRank * 100.0) / entries.size()))
                 : 100;
@@ -161,6 +187,11 @@ public class LeaderboardController {
         Map<String, Object> result = new HashMap<>();
         result.put("period", period);
         result.put("currentUserRank", currentUserRank);
+        result.put("currentUserEmissions", userEmissions);
+        result.put("currentUserScore", userScore);
+        result.put("platformAverageEmissions", platformAvg);
+        result.put("gapToNextRank", gapToNextRank.setScale(1, RoundingMode.HALF_UP));
+        result.put("nextRankParticipantName", nextRankName);
         result.put("percentile", percentile);
         result.put("totalParticipants", entries.size());
         result.put("leaderboard", top50);

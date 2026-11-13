@@ -187,13 +187,12 @@ export default function Header({
         {onOpenAiChat && (
           <button
             type="button"
-            className="header-ai-btn"
+            className="header-icon-btn header-ai-btn"
             onClick={onOpenAiChat}
-            title="Ask CarbonTrack AI Assistant"
-            aria-label="Ask CarbonTrack AI Assistant"
+            title="Ask AI"
+            aria-label="Ask AI"
           >
-            <Bot size={17} />
-            <span className="header-ai-label">AI Coach</span>
+            <Bot size={18} />
           </button>
         )}
 

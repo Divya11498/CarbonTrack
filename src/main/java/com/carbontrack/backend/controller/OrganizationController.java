@@ -65,21 +65,35 @@ public class OrganizationController {
         this.emailService = emailService;
     }
 
-    // 1. Get current user's organization workspace
+    // 1. Get current user's organization workspace (supports switching via optional orgId)
     @GetMapping("/my")
-    public ResponseEntity<?> getMyOrganization(Authentication authentication) {
+    public ResponseEntity<?> getMyOrganization(
+            @RequestParam(required = false) Long orgId,
+            Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
         if (user == null) {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
         List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(user.getId());
+        if (memberships.isEmpty()) {
+            return ResponseEntity.ok(Map.of("hasOrganization", false));
+        }
+
         Organization org = null;
         OrganizationMember userMember = null;
 
-        if (memberships.isEmpty()) {
-            return ResponseEntity.ok(Map.of("hasOrganization", false));
-        } else {
+        if (orgId != null) {
+            for (OrganizationMember m : memberships) {
+                if (m.getOrganizationId().equals(orgId)) {
+                    userMember = m;
+                    org = organizationRepository.findById(m.getOrganizationId()).orElse(null);
+                    break;
+                }
+            }
+        }
+
+        if (org == null) {
             userMember = memberships.get(0);
             org = organizationRepository.findById(userMember.getOrganizationId()).orElse(null);
         }
@@ -89,6 +103,33 @@ public class OrganizationController {
         }
 
         return ResponseEntity.ok(buildOrganizationResponse(org, userMember));
+    }
+
+    // 1b. Get all organizations the current user belongs to (Workspace switcher)
+    @GetMapping("/list")
+    public ResponseEntity<?> getMyOrganizationsList(Authentication authentication) {
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(user.getId());
+        List<Map<String, Object>> orgs = new ArrayList<>();
+        for (OrganizationMember m : memberships) {
+            Organization org = organizationRepository.findById(m.getOrganizationId()).orElse(null);
+            if (org != null) {
+                long count = organizationMemberRepository.findByOrganizationId(org.getId()).size();
+                Map<String, Object> item = new HashMap<>();
+                item.put("organizationId", org.getId());
+                item.put("name", org.getName());
+                item.put("organizationType", org.getOrganizationType());
+                item.put("role", m.getRole());
+                item.put("department", m.getDepartment());
+                item.put("membersCount", count);
+                orgs.add(item);
+            }
+        }
+        return ResponseEntity.ok(orgs);
     }
 
     // 2. Create a new organization
@@ -380,6 +421,51 @@ public class OrganizationController {
         return ResponseEntity.ok(Map.of("message", "Member role updated successfully", "userId", targetUserId, "role", newRole.toUpperCase()));
     }
 
+    // 7b. Update member department
+    @PutMapping("/{id}/members/{targetUserId}/department")
+    public ResponseEntity<?> updateMemberDepartment(
+            @PathVariable Long id,
+            @PathVariable Long targetUserId,
+            @RequestBody Map<String, String> payload,
+            Authentication authentication) {
+
+        User user = getAuthenticatedUser(authentication);
+        if (user == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        OrganizationMember caller = organizationMemberRepository
+                .findByOrganizationIdAndUserId(id, user.getId())
+                .orElse(null);
+
+        if (caller == null || (!"OWNER".equalsIgnoreCase(caller.getRole()) && !"ADMIN".equalsIgnoreCase(caller.getRole()))) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                    .body(Map.of("error", "Only organization owners or administrators can assign departments"));
+        }
+
+        OrganizationMember target = organizationMemberRepository
+                .findByOrganizationIdAndUserId(id, targetUserId)
+                .orElse(null);
+
+        if (target == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "Member not found in organization"));
+        }
+
+        String department = payload.get("department");
+        if (department == null || department.trim().isEmpty()) {
+            department = "General";
+        }
+
+        target.setDepartment(department.trim());
+        organizationMemberRepository.save(target);
+
+        return ResponseEntity.ok(Map.of(
+                "message", "Member department updated successfully",
+                "userId", targetUserId,
+                "department", target.getDepartment()
+        ));
+    }
+
     // 8. Revoke pending invitation
     @DeleteMapping("/{id}/invitations/{invitationId}")
     public ResponseEntity<?> revokeInvitation(
@@ -620,24 +706,34 @@ public class OrganizationController {
         BigDecimal avgPerEmployee = members.isEmpty() ? BigDecimal.ZERO
                 : totalOrgEmissions.divide(BigDecimal.valueOf(members.size()), 1, RoundingMode.HALF_UP);
 
-        // Department breakdown
+        // Department breakdown with average metrics and member rosters
         Map<String, BigDecimal> deptSums = new HashMap<>();
         Map<String, Integer> deptCounts = new HashMap<>();
+        Map<String, List<String>> deptMembers = new HashMap<>();
         for (Map<String, Object> m : memberDetails) {
             String dept = (String) m.get("department");
+            if (dept == null || dept.isBlank()) dept = "Engineering";
             BigDecimal em = (BigDecimal) m.get("emissions");
             deptSums.put(dept, deptSums.getOrDefault(dept, BigDecimal.ZERO).add(em));
             deptCounts.put(dept, deptCounts.getOrDefault(dept, 0) + 1);
+            deptMembers.computeIfAbsent(dept, k -> new ArrayList<>()).add((String) m.get("name"));
         }
 
         List<Map<String, Object>> departmentStats = deptSums.entrySet().stream()
                 .map(e -> {
+                    String deptName = e.getKey();
+                    BigDecimal totalEm = e.getValue().setScale(1, RoundingMode.HALF_UP);
+                    int count = deptCounts.getOrDefault(deptName, 1);
+                    BigDecimal avgEm = count > 0 ? totalEm.divide(BigDecimal.valueOf(count), 1, RoundingMode.HALF_UP) : BigDecimal.ZERO;
                     Map<String, Object> map = new HashMap<>();
-                    map.put("name", e.getKey());
-                    map.put("emissions", e.getValue().setScale(1, RoundingMode.HALF_UP));
-                    map.put("memberCount", deptCounts.getOrDefault(e.getKey(), 1));
+                    map.put("name", deptName);
+                    map.put("emissions", totalEm);
+                    map.put("memberCount", count);
+                    map.put("averagePerMemberKg", avgEm);
+                    map.put("members", deptMembers.getOrDefault(deptName, List.of()));
                     return map;
                 })
+                .sorted((a, b) -> ((BigDecimal) b.get("emissions")).compareTo((BigDecimal) a.get("emissions")))
                 .collect(Collectors.toList());
 
         // Pending invitations
@@ -731,6 +827,26 @@ public class OrganizationController {
         response.put("members", memberDetails);
         response.put("departments", departmentStats);
         response.put("invitations", invitationDetails);
+
+        // All workspace organizations the user belongs to (for workspace switching)
+        List<Map<String, Object>> workspaces = new ArrayList<>();
+        if (userMember != null) {
+            List<OrganizationMember> allMemberships = organizationMemberRepository.findByUserId(userMember.getUserId());
+            for (OrganizationMember om : allMemberships) {
+                Organization o = organizationRepository.findById(om.getOrganizationId()).orElse(null);
+                if (o != null) {
+                    Map<String, Object> w = new HashMap<>();
+                    w.put("organizationId", o.getId());
+                    w.put("name", o.getName());
+                    w.put("type", o.getOrganizationType());
+                    w.put("role", om.getRole());
+                    w.put("department", om.getDepartment());
+                    w.put("isCurrent", o.getId().equals(org.getId()));
+                    workspaces.add(w);
+                }
+            }
+        }
+        response.put("workspaces", workspaces);
 
         return response;
     }

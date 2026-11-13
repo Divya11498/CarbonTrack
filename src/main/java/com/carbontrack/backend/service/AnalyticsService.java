@@ -143,22 +143,31 @@ public class AnalyticsService {
         Map<LocalDate, List<ActivityLog>> byDate = filtered.stream()
                 .filter(a -> a.getLogDate() != null)
                 .collect(Collectors.groupingBy(ActivityLog::getLogDate));
+        Map<LocalDate, List<ActivityLog>> prevByDate = prevFiltered.stream()
+                .filter(a -> a.getLogDate() != null)
+                .collect(Collectors.groupingBy(ActivityLog::getLogDate));
 
         List<Map<String, Object>> trendPoints = new ArrayList<>();
         double cumulative = 0.0;
         double targetCumulative = 0.0;
         DateTimeFormatter fmt = spanDays > 60 ? DateTimeFormatter.ofPattern("MMM dd") : DateTimeFormatter.ofPattern("MM-dd");
 
+        long dayIndex = 0;
         for (LocalDate d = start; !d.isAfter(end); d = d.plusDays(1)) {
             List<ActivityLog> dayLogs = byDate.getOrDefault(d, List.of());
             BigDecimal daySum = sumCo2(dayLogs);
             cumulative += daySum.doubleValue();
             targetCumulative += dailyBudget;
 
+            LocalDate prevD = prevStart.plusDays(dayIndex++);
+            List<ActivityLog> prevDayLogs = prevByDate.getOrDefault(prevD, List.of());
+            BigDecimal prevDaySum = sumCo2(prevDayLogs);
+
             Map<String, Object> pt = new HashMap<>();
             pt.put("date", d.toString());
             pt.put("label", d.format(fmt));
             pt.put("co2e", daySum.setScale(2, RoundingMode.HALF_UP));
+            pt.put("prevCo2e", prevDaySum.setScale(2, RoundingMode.HALF_UP));
             pt.put("cumulativeCo2e", BigDecimal.valueOf(cumulative).setScale(2, RoundingMode.HALF_UP));
             pt.put("targetCumulativeCo2e", BigDecimal.valueOf(targetCumulative).setScale(2, RoundingMode.HALF_UP));
             pt.put("count", dayLogs.size());
@@ -183,7 +192,10 @@ public class AnalyticsService {
             weeklyComparison.add(wRow);
         }
 
-        // Month-over-Month & Historical 6 months
+        Map<Short, ActivityCategory> catMap = categoryMap();
+        Map<Short, ActivityType> typeMap = typeMap();
+
+        // Month-over-Month & Historical 6 months with category breakdown
         List<Map<String, Object>> historicalEmissions = new ArrayList<>();
         DateTimeFormatter monthFmt = DateTimeFormatter.ofPattern("MMM yyyy");
         LocalDate currentMonthStart = today.withDayOfMonth(1);
@@ -202,11 +214,29 @@ public class AnalyticsService {
             mRow.put("previousYearCo2e", prevYearSum.setScale(2, RoundingMode.HALF_UP));
             mRow.put("target", BigDecimal.valueOf(monthlyTarget).setScale(2, RoundingMode.HALF_UP));
             mRow.put("activities", mLogs.size());
+
+            // Add category breakdown per month for stacked bar visualization
+            mRow.put("Transport", BigDecimal.ZERO);
+            mRow.put("Electricity", BigDecimal.ZERO);
+            mRow.put("Food", BigDecimal.ZERO);
+            mRow.put("Shopping", BigDecimal.ZERO);
+            mRow.put("Waste", BigDecimal.ZERO);
+            mRow.put("Other", BigDecimal.ZERO);
+
+            for (ActivityLog a : mLogs) {
+                ActivityCategory cat = catMap.get(a.getCategoryId());
+                String rawName = cat != null && cat.getName() != null ? cat.getName() : "Other";
+                String cKey = Character.toUpperCase(rawName.charAt(0)) + rawName.substring(1).toLowerCase();
+                if (!mRow.containsKey(cKey)) {
+                    cKey = "Other";
+                }
+                BigDecimal cur = (BigDecimal) mRow.get(cKey);
+                BigDecimal addVal = a.getCo2eKg() != null ? a.getCo2eKg() : BigDecimal.ZERO;
+                mRow.put(cKey, cur.add(addVal).setScale(2, RoundingMode.HALF_UP));
+            }
+
             historicalEmissions.add(mRow);
         }
-
-        Map<Short, ActivityCategory> catMap = categoryMap();
-        Map<Short, ActivityType> typeMap = typeMap();
         Map<String, BigDecimal> categoryTotals = computeCategoryTotals(filtered, catMap);
         List<Map<String, Object>> categorySeries = buildCategoryBreakdown(categoryTotals, totalCo2e);
 
