@@ -20,6 +20,7 @@ import com.carbontrack.backend.service.EmailService;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.math.BigDecimal;
@@ -75,7 +76,7 @@ public class OrganizationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(user.getId());
+        List<OrganizationMember> memberships = organizationMemberRepository.findByUserIdOrderByJoinedAtDesc(user.getId());
         if (memberships.isEmpty()) {
             return ResponseEntity.ok(Map.of("hasOrganization", false));
         }
@@ -106,6 +107,11 @@ public class OrganizationController {
     }
 
     // 1b. Get all organizations the current user belongs to (Workspace switcher)
+    @GetMapping
+    public ResponseEntity<?> getOrganizations(Authentication authentication) {
+        return getMyOrganizationsList(authentication);
+    }
+
     @GetMapping("/list")
     public ResponseEntity<?> getMyOrganizationsList(Authentication authentication) {
         User user = getAuthenticatedUser(authentication);
@@ -113,7 +119,7 @@ public class OrganizationController {
             return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
         }
 
-        List<OrganizationMember> memberships = organizationMemberRepository.findByUserId(user.getId());
+        List<OrganizationMember> memberships = organizationMemberRepository.findByUserIdOrderByJoinedAtDesc(user.getId());
         List<Map<String, Object>> orgs = new ArrayList<>();
         for (OrganizationMember m : memberships) {
             Organization org = organizationRepository.findById(m.getOrganizationId()).orElse(null);
@@ -134,6 +140,7 @@ public class OrganizationController {
 
     // 2. Create a new organization
     @PostMapping
+    @Transactional
     public ResponseEntity<?> createOrganization(
             @RequestBody Map<String, String> payload,
             Authentication authentication) {
@@ -150,7 +157,12 @@ public class OrganizationController {
 
         Organization org = new Organization();
         org.setName(name.trim());
-        org.setOrganizationType(payload.getOrDefault("organizationType", "COMPANY"));
+        String rawType = payload.getOrDefault("organizationType", "COMPANY");
+        String orgType = rawType != null ? rawType.trim().toUpperCase() : "COMPANY";
+        if (!Set.of("COMPANY", "UNIVERSITY", "NGO", "GOVERNMENT", "OTHER").contains(orgType)) {
+            orgType = "COMPANY";
+        }
+        org.setOrganizationType(orgType);
         org.setDescription(payload.get("description"));
         org.setWebsite(payload.get("website"));
         org.setContactEmail(payload.get("contactEmail"));
@@ -201,7 +213,10 @@ public class OrganizationController {
             org.setName(payload.get("name").trim());
         }
         if (payload.containsKey("organizationType") && payload.get("organizationType") != null) {
-            org.setOrganizationType(payload.get("organizationType"));
+            String uType = payload.get("organizationType").trim().toUpperCase();
+            if (Set.of("COMPANY", "UNIVERSITY", "NGO", "GOVERNMENT", "OTHER").contains(uType)) {
+                org.setOrganizationType(uType);
+            }
         }
         if (payload.containsKey("description")) {
             org.setDescription(payload.get("description"));

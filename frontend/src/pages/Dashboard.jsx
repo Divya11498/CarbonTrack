@@ -269,24 +269,45 @@ export default function Dashboard({
   // Visualization B data: Category breakdown donut
   const categoryChartData = useMemo(() => {
     if (trendsData?.categorySeries && Array.isArray(trendsData.categorySeries) && trendsData.categorySeries.length > 0) {
-      return trendsData.categorySeries
-        .filter((c) => Number(c.co2eKg || 0) > 0)
-        .map((c) => ({
-          name: c.name,
-          value: Number(c.co2eKg || 0),
-          percentage: Number(c.percentage || 0),
-          color: CATEGORY_COLORS[c.name] || "#8D9B72",
-        }));
+      const parsed = trendsData.categorySeries
+        .map((c) => {
+          const val = Number(c.value ?? c.co2eKg ?? 0);
+          const pct = Number(c.percent ?? c.percentage ?? 0);
+          const rawName = c.name || "Other";
+          const name = rawName.charAt(0).toUpperCase() + rawName.slice(1).toLowerCase();
+          return {
+            name,
+            value: Number(val.toFixed(2)),
+            percentage: pct,
+            color: CATEGORY_COLORS[name] || CATEGORY_COLORS[rawName] || "#8D9B72",
+          };
+        })
+        .filter((c) => c.value > 0);
+
+      if (parsed.length > 0) {
+        return parsed;
+      }
     }
 
     // Fallback from activities
+    const catIdToName = {
+      1: "Transport",
+      2: "Electricity",
+      3: "Food",
+      4: "Shopping",
+      5: "Waste",
+    };
+
     const map = new Map();
     let sum = 0;
-    activities.forEach((item) => {
-      const cat = item.category || item.categoryName || "Other";
-      const co2 = Number(item.co2e || item.co2eKg || 0);
-      map.set(cat, (map.get(cat) || 0) + co2);
-      sum += co2;
+    (activities || []).forEach((item) => {
+      const rawCat = item.category || item.categoryName || catIdToName[item.categoryId] || "Other";
+      const cat = typeof rawCat === "string" ? (rawCat.charAt(0).toUpperCase() + rawCat.slice(1).toLowerCase()) : "Other";
+      const co2 = Number(item.co2eKg ?? item.co2e ?? 0);
+      if (co2 > 0) {
+        map.set(cat, (map.get(cat) || 0) + co2);
+        sum += co2;
+      }
     });
 
     return [...map.entries()]
@@ -857,18 +878,51 @@ export default function Dashboard({
                 style={{
                   height: "100%",
                   display: "flex",
+                  flexDirection: "column",
                   alignItems: "center",
                   justifyContent: "center",
                   color: "var(--text-muted)",
                   fontSize: "0.85rem",
+                  textAlign: "center",
+                  padding: "16px",
+                  gap: "8px",
                 }}
               >
-                No category activities recorded yet.
+                <PieChartIcon size={28} style={{ opacity: 0.4 }} />
+                <span>No emission data available yet. Start logging your activities to see your category-wise emissions.</span>
               </div>
             ) : (
               <>
                 <ResponsiveContainer width="100%" height="100%">
                   <PieChart>
+                    <Tooltip
+                      content={({ active, payload }) => {
+                        if (!active || !payload || !payload.length) return null;
+                        const data = payload[0].payload;
+                        return (
+                          <div
+                            style={{
+                              background: "var(--bg-card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "8px",
+                              padding: "8px 12px",
+                              boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                              fontSize: "0.8rem",
+                            }}
+                          >
+                            <div style={{ fontWeight: 700, color: data.color || "var(--text-main)", marginBottom: "2px" }}>
+                              {data.name}
+                            </div>
+                            <div style={{ color: "var(--text-main)" }}>
+                              <strong>{data.value} kg</strong> CO₂e
+                            </div>
+                            <div style={{ color: "var(--text-muted)", fontSize: "0.75rem" }}>
+                              {data.percentage}% of total emissions
+                            </div>
+                          </div>
+                        );
+                      }}
+                    />
                     <Pie
                       data={categoryChartData}
                       dataKey="value"

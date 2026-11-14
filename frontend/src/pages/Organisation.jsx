@@ -114,10 +114,12 @@ export default function Organisation({ token }) {
     setLoading(true);
     setError("");
     try {
-      const url = targetOrgId ? `/api/organizations/my?orgId=${targetOrgId}` : "/api/organizations/my";
+      const activeOrgId = targetOrgId || localStorage.getItem("carbontrack_active_org_id");
+      const url = activeOrgId ? `/api/organizations/my?orgId=${activeOrgId}` : "/api/organizations/my";
       const res = await apiRequest(url, { token });
       setOrgData(res);
-      if (res && res.hasOrganization) {
+      if (res && res.hasOrganization && res.organizationId) {
+        localStorage.setItem("carbontrack_active_org_id", String(res.organizationId));
         setEditName(res.name || "");
         setEditType(res.type || "COMPANY");
         setEditDescription(res.description || "");
@@ -332,6 +334,7 @@ export default function Organisation({ token }) {
 
       showToast("Organization deleted successfully.");
       setDeleteConfirmOpen(false);
+      localStorage.removeItem("carbontrack_active_org_id");
       loadOrg();
     } catch (err) {
       showToast(err.message || "Failed to delete organization", "error");
@@ -359,11 +362,14 @@ export default function Organisation({ token }) {
         },
       });
 
+      if (res && res.organizationId) {
+        localStorage.setItem("carbontrack_active_org_id", String(res.organizationId));
+      }
       showToast(`Welcome to ${res.name || "your new organization"}!`);
       setCreateOrgModalOpen(false);
       setCreateName("");
       setCreateDescription("");
-      loadOrg(res.organizationId);
+      loadOrg(res?.organizationId);
     } catch (err) {
       showToast(err.message || "Failed to create organization", "error");
     } finally {
@@ -603,6 +609,7 @@ export default function Organisation({ token }) {
                         type="button"
                         onClick={() => {
                           setWorkspaceDropdownOpen(false);
+                          localStorage.setItem("carbontrack_active_org_id", String(ws.organizationId));
                           loadOrg(ws.organizationId);
                         }}
                         style={{

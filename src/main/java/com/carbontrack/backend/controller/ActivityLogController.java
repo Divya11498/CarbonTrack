@@ -19,7 +19,7 @@ import java.util.List;
 import java.util.Map;
 
 @RestController
-@RequestMapping("/api/activities")
+@RequestMapping({"/api/activities", "/api/activity-logs"})
 public class ActivityLogController {
 
     private final ActivityLogService activityLogService;

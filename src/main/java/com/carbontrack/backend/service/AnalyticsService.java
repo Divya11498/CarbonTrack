@@ -238,7 +238,11 @@ public class AnalyticsService {
             historicalEmissions.add(mRow);
         }
         Map<String, BigDecimal> categoryTotals = computeCategoryTotals(filtered, catMap);
-        List<Map<String, Object>> categorySeries = buildCategoryBreakdown(categoryTotals, totalCo2e);
+        if (categoryTotals.isEmpty() && !allLogs.isEmpty()) {
+            categoryTotals = computeCategoryTotals(allLogs, catMap);
+        }
+        BigDecimal effectiveTotalForCats = totalCo2e.compareTo(BigDecimal.ZERO) > 0 ? totalCo2e : sumCo2(allLogs);
+        List<Map<String, Object>> categorySeries = buildCategoryBreakdown(categoryTotals, effectiveTotalForCats);
 
         List<Map<String, Object>> topActivities = filtered.stream()
                 .sorted((a, b) -> safeCo2(b).compareTo(safeCo2(a)))
@@ -546,7 +550,9 @@ public class AnalyticsService {
                     Map<String, Object> item = new HashMap<>();
                     item.put("name", entry.getKey());
                     item.put("value", entry.getValue().setScale(2, RoundingMode.HALF_UP));
+                    item.put("co2eKg", entry.getValue().setScale(2, RoundingMode.HALF_UP));
                     item.put("percent", pct);
+                    item.put("percentage", pct);
                     return item;
                 })
                 .toList();
